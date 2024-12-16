@@ -5,30 +5,30 @@ Testing Mock Proxy
 ## Installation
 
 ```bash
-yarn install
+npm install
 ```
 
 ## Database migration
 
 ```bash
 # generate migration
-yarn database:generate
+npm run database:generate
 
 # run migration
-yarn database:migrate
+npm run database:migrate
 ```
 
 ## Running the app
 
 ```bash
 # development
-yarn start
+npm run start
 
 # watch mode
-yarn start:dev
+npm run start:dev
 
 # production mode
-yarn start:prod
+npm run start:prod
 ```
 
 ## OpenAPI docs

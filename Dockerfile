@@ -6,8 +6,8 @@ WORKDIR /usr/src
 
 COPY . ./
 RUN corepack enable \
-    && yarn install \
-    && yarn build
+    && npm install \
+    && npm run build
 
 USER node
 CMD node dist/srcv/main
