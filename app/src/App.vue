@@ -1,16 +1,23 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
 </script>
 
 <template>
-  <header>
-    <div class="wrapper">
-    </div>
-  </header>
-
-  <RouterView />
+  <div class="content">
+    <header>
+      <MainNavigation></MainNavigation>
+    </header>
+  
+    <main>
+      <RouterView />
+    </main>
+  </div>
 </template>
 
 <style scoped>
-
+.content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
 </style>

@@ -2,5 +2,7 @@
 </script>
 
 <template>
-  <p>Hello World</p>
+  <main>
+    Clients Page
+  </main>
 </template>
