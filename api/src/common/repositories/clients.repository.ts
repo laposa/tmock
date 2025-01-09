@@ -67,7 +67,9 @@ export class ClientsRepository {
         id: clients.id,
       });
     
-    await this.updateScenarios(client[0].id, data.scenarios);
+    if(data.scenarios) {
+      await this.updateScenarios(client[0].id, data.scenarios);
+    }
     
     return client;
   }

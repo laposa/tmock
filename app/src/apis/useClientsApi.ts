@@ -14,13 +14,14 @@ export type Client = {
 // }
 
 export const useClientsApi = () => {
+  const { axiosAuth } = useTmockApi();
 
   const prepareGetClients = () => {
     // TODO response type? or just clients[]?
-    // todo how to inject api url automatically?
     const axios = useAxios(
-      'http://localhost:3000/client',
+      '/client',
       { method: 'GET' },
+      axiosAuth,
       { immediate: false },
     );
 
@@ -38,7 +39,14 @@ export const useClientsApi = () => {
     return { ...axios, data, load, reset };
   };
 
+  const setClientEnabled = async (clientId: string, enabled: boolean) => {
+    await axiosAuth.patch(`/client/${clientId}`, {
+      enabled: enabled,
+    });
+  };
+
   return {
     prepareGetClients,
+    setClientEnabled,
   }
 };

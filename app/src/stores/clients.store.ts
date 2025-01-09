@@ -18,5 +18,9 @@ export const useClientsStore = defineStore('clients', () => {
     return getClients.load();
   }
 
-  return { clients, reset, load }
+  async function setClientEnabled(clientId: string, enabled: boolean) {
+    return clientsApi.setClientEnabled(clientId, enabled);
+  }
+
+  return { clients, reset, load, setClientEnabled };
 })

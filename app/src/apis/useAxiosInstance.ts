@@ -11,14 +11,14 @@ export const useAxiosInstance = (baseUrl?: string) => {
   }
 
   return {
-    axios: axiosInstance,
+    axiosAuth: axiosInstance,
   };
 };
 
 export const useTmockApi = () => {
   
   const config = useConfig();
-  const { axios } = useAxiosInstance(config.apiEndpoint);
+  const { axiosAuth } = useAxiosInstance(config.apiEndpoint);
 
-  return { axios };
+  return { axiosAuth };
 };

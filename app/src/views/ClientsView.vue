@@ -4,7 +4,6 @@ import { useClientsStore } from '@/stores/clients.store';
 const clientsStore = useClientsStore();
 
 clientsStore.load();
-
 </script>
 
 <template>
@@ -14,9 +13,10 @@ clientsStore.load();
     <v-table theme="dark">
       <thead>
         <tr>
+          <th></th>
           <th>Name</th>
-          <th>Enabled</th>
           <th>Conditions</th>
+          <th>Scenarios</th>
         </tr>
       </thead>
 
@@ -25,11 +25,25 @@ clientsStore.load();
       <!-- ClientList as separate component? due to own actions and styling and stuff? -->
       <tbody>
         <tr v-for="client in clientsStore.clients" :key="client.id">
+          <td>
+            <v-switch 
+              v-model="client.enabled" 
+              color="indigo" 
+              hide-details
+              @change="clientsStore.setClientEnabled(client.id, client.enabled)"
+            />
+          </td>
           <td>{{ client.name }}</td>
-          <td>{{ client.enabled }}</td>
           <td>{{ client.conditions }}</td>
+          <td>{{ client.scenarios }}</td>
         </tr>
       </tbody>
     </v-table>
   </main>
 </template>
+
+<style scoped>
+td:first-of-type, th:first-of-type {
+  width: 60px;
+}
+</style>
