@@ -11,7 +11,7 @@
 a,
 .green {
   text-decoration: none;
-  color: #3f51b5;
+  color: var(--primary);
   transition: 0.4s;
   padding: 3px;
 }

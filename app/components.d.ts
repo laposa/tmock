@@ -7,7 +7,13 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ClientEdit: typeof import('./src/components/client/ClientEdit.vue')['default']
+    ClientEditView: typeof import('./src/components/client/ClientEditView.vue')['default']
+    ClientList: typeof import('./src/components/client/ClientList.vue')['default']
+    ClientsEditView: typeof import('./src/components/client/ClientsEditView.vue')['default']
+    ClientsView: typeof import('./src/components/client/ClientsView.vue')['default']
     MainNavigation: typeof import('./src/components/ui/MainNavigation.vue')['default']
+    ModalWindow: typeof import('./src/components/ui/ModalWindow.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }

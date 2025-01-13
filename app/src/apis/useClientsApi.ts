@@ -39,14 +39,44 @@ export const useClientsApi = () => {
     return { ...axios, data, load, reset };
   };
 
+  const prepareGetClientDetail = () => {
+    const axios = useAxios(
+      '/client/',
+      { method: 'GET' },
+      axiosAuth,
+      { immediate: false },
+    );
+
+    const load = (id: string) =>
+      axios.execute(`/client/${id}`, {}); //TODO is there a better way to call dynamic link?
+
+    const reset = () => {
+      axios.data.value = [];
+    }
+
+    const data = computed(() => {
+      return axios.data.value ?? [];
+    })
+
+    return { ...axios, data, load, reset };
+  };
+
   const setClientEnabled = async (clientId: string, enabled: boolean) => {
     await axiosAuth.patch(`/client/${clientId}`, {
       enabled: enabled,
     });
   };
 
+  const setClientName = async (clientId: string, name: string) => {
+    await axiosAuth.patch(`/client/${clientId}`, {
+      name: name,
+    });
+  };
+
   return {
     prepareGetClients,
+    prepareGetClientDetail,
     setClientEnabled,
+    setClientName,
   }
 };

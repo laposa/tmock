@@ -6,7 +6,7 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 
 import App from './App.vue';
-import router from './router';
+import router from './router.ts';
 import { createVuetify } from 'vuetify';
 import { configPlugin } from './plugins/config/config.plugin';
 import type { AppConfig } from './plugins/config/config.interfaces';
