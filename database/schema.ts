@@ -12,7 +12,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 
-const prefix = 'mp_v2_';
+const prefix = 'mp_';
 
 export const options = pgTable(`${prefix}options`, {
   key: varchar('key').primaryKey(),
