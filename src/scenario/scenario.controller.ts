@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Put,
+  UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
@@ -20,8 +21,10 @@ import {
 } from './dtos';
 import { ResponseMessage } from '@/common/dtos/ResponseMessage.dto';
 import { ProxyService } from '@/proxy/proxy.service';
+import { ApiKeyGuard } from '@/common/guards/api-key.guard';
 
 @Controller('scenario')
+@UseGuards(ApiKeyGuard)
 export class ScenarioController {
   constructor(
     private readonly service: ScenarioService,

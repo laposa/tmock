@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Put,
+  UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
@@ -15,8 +16,10 @@ import { ClientService } from './client.service';
 import { ResponseMessage } from '@/common/dtos/ResponseMessage.dto';
 import { ProxyService } from '@/proxy/proxy.service';
 import { ClientDto, ClientUpsertResponse, CreateClientDto, PatchClientDto, ClientResponse } from './dtos';
+import { ApiKeyGuard } from '@/common/guards/api-key.guard';
 
 @Controller('client')
+@UseGuards(ApiKeyGuard)
 export class ClientController {
   constructor(
     private readonly service: ClientService,
