@@ -10,4 +10,4 @@ RUN corepack enable \
     && yarn build
 
 USER node
-CMD node dist/srcv/main
+CMD node dist/src/main
