@@ -23,7 +23,10 @@ const appConfig = registerAs('app', () => {
       databaseName: process.env.DATABASE_NAME!,
       user: process.env.DATABASE_USER!,
       password: process.env.DATABASE_PASSWORD!,
-      ssl: process.env.DATABASE_ENABLE_SSL === 'true' ? 'require' : false
+      ssl: process.env.DATABASE_ENABLE_SSL === 'true' ? 'require' : false,
+    },
+    proxy: {
+      removeForwardedHeaders: process.env.PROXY_REMOVE_FORWARDED_HEADERS,
     },
   };
 });
