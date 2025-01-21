@@ -10,4 +10,4 @@ RUN corepack enable \
     && npm run build
 
 USER node
-CMD node dist/srcv/main
+CMD node dist/src/main

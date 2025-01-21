@@ -10,13 +10,15 @@ export const databaseProvider = {
   provide: DB_PROVIDER_KEY,
   useFactory: (config: AppConfig) => {
     const { host, ssl, user, password, port, databaseName } = config.database;
-
-    let connectionString = `postgresql://${user}:${password}@${host}:${port}/${databaseName}`;
-    if (ssl) {
-      connectionString += '?ssl=true';
-    }
-
-    const pool = new Pool({ connectionString });
+    
+    const pool = new Pool({
+      host,
+      port,
+      user,
+      password,
+      database: databaseName,
+      ssl: ssl ? { rejectUnauthorized: false } : false,
+    });
     return drizzle(pool, { schema, logger: true });
   },
   inject: [appConfig.KEY],

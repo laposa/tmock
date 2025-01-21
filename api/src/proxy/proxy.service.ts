@@ -68,6 +68,16 @@ export class ProxyService {
       proxyReq.setHeader('Apikey', this.config.servicesApiKey);
     }
 
+    // remove forwarded headers
+    if (this.config.proxy.removeForwardedHeaders) {
+      proxyReq.removeHeader('x-forwarded-host');
+      proxyReq.removeHeader('x-forwarded-port');
+      proxyReq.removeHeader('x-forwarded-proto');
+      proxyReq.removeHeader('x-forwarded-scheme');
+      proxyReq.removeHeader('x-scheme');
+      proxyReq.removeHeader('x-forwarded-server');
+    }
+
     fixRequestBody(proxyReq, req);
 
     if (proxyReq.host === 'service-not-found') {
