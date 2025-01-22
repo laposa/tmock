@@ -7,4 +7,5 @@ export class ClientDto implements ClientDtoType {
   name: string;
 	condition: ClientCondition;
 	enabled: boolean;
+	scenarios: number[];
 }

@@ -1,4 +1,4 @@
-import { ScenarioDto } from './';
+import { ScenarioDto } from '.';
 
 export class ScenarioServiceDto {
   path: string;

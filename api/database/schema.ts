@@ -9,7 +9,9 @@ import {
   smallint,
   primaryKey,
   integer,
+  json,
 } from 'drizzle-orm/pg-core';
+import { arrayBuffer } from 'stream/consumers';
 
 
 const prefix = 'mp_';
@@ -58,6 +60,7 @@ export const clients = pgTable(`${prefix}clients`, {
   name: varchar('name').notNull(),
   enabled: boolean('enabled').default(true),
   condition: jsonb('condition').$type<ClientCondition>(),
+  scenarios: json('allowed_scenarios').$type<number[]>(),
 });
 
 export const clientsRelations = relations(clients, ({ many }) => ({

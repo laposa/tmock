@@ -1,13 +1,27 @@
 <script setup lang="ts">
+import { onMounted } from 'vue';
+
 const props = defineProps({
   id: String,
 });
 
+onMounted(() => {
+  const dialog = document.getElementById(props.id ?? '') as HTMLDialogElement; 
+
+  dialog.addEventListener('click', function(event) {
+    var rect = dialog.getBoundingClientRect();
+    var isInDialog = (rect.top <= event.clientY && event.clientY <= rect.top + rect.height &&
+      rect.left <= event.clientX && event.clientX <= rect.left + rect.width);
+    if (!isInDialog) {
+      dialog.close();
+    }
+  });
+})
+
 function closeDialog() {
-  const dialog = document.getElementById(props.id) as HTMLDialogElement;
+  const dialog = document.getElementById(props.id ?? '') as HTMLDialogElement;
   dialog.close();
 }
-
 </script>
 
 <template>

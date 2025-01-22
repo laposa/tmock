@@ -33,5 +33,9 @@ export const useClientsStore = defineStore('clients', () => {
     return clientsApi.setClientName(clientId, name);
   }
 
-  return { clients, detail, reset, load, setClientEnabled, setClientName, loadClientDetail };
+  async function addNewClient(name: string) {
+    return clientsApi.addNewClient(name);
+  }
+
+  return { clients, detail, reset, load, setClientEnabled, setClientName, loadClientDetail, addNewClient };
 })

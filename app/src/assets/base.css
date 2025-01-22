@@ -23,8 +23,7 @@
 
 /* semantic color variables for this project */
 :root {
-  --primary: #3f51b5;
-  --primary-medium: #576bd8;
+  --primary: #596dde;
 
   --color-background: var(--vt-c-white);
   --color-background-soft: var(--vt-c-white-soft);

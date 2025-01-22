@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Client } from '@/apis/useClientsApi';
+import { openModalWindow } from '@/helpers';
 import { useClientsStore } from '@/stores/clients.store';
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 
 const clientsStore = useClientsStore();
 clientsStore.load();
@@ -9,8 +9,12 @@ clientsStore.load();
 const clients = computed(() => clientsStore.clients ?? []);
 
 function openClientEdit(clientId: string) {
-  const modal = document.querySelector('#clientEdit') as HTMLDialogElement;
-  modal.showModal();
+  openModalWindow('clientEdit');
+  clientsStore.loadClientDetail(clientId);
+}
+
+function openClientConditionsEdit(clientId: string) {
+  openModalWindow('clientConditionsEdit');
   clientsStore.loadClientDetail(clientId);
 }
 </script>
@@ -27,8 +31,6 @@ function openClientEdit(clientId: string) {
         </tr>
       </thead>
 
-      <!-- TODO active scenarios -->
-      <!-- TODO: sort by name - data table ? -->
       <tbody>
         <tr v-for="client in clients" :key="client.id">
           <td>
@@ -42,16 +44,12 @@ function openClientEdit(clientId: string) {
           <td>
             <span class="edit" @click="openClientEdit(client.id)">{{ client.name }}</span>
           </td>
-          <td>{{ client.conditions }}</td>
+          <td><span class="edit" @click="openClientConditionsEdit(client.id)">Conditions</span></td>
+          <!-- TODO scenario chips when scenarios are implemented -->
           <td>{{ client.scenarios }}</td>
         </tr>
       </tbody>
     </v-table>
-
-    <!-- do client editu si nastavím jako model current client nebo tak něco jako computed a ten budu měnit pomoci kliku na to jméno společně s aktivací toho dialogu -->
-    <!-- použít native dialog? dá se s ním pak pořešit více dialogů a tak? -->
-
-    <ClientEdit></ClientEdit>
   </main>
 </template>
 
@@ -65,8 +63,9 @@ td:first-of-type, th:first-of-type {
   width: 60px;
 }
 .edit {
-  color: var(--primary-medium);
+  color: var(--primary);
   cursor: pointer;
+  transition: 0.3s; 
 }
 
 .edit:hover {

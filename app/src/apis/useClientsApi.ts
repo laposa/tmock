@@ -3,15 +3,13 @@ import { useTmockApi } from './useAxiosInstance';
 import { computed } from 'vue';
 
 export type Client = {
+  id: string;
   name: string;
   enabled: boolean;
-  condition?: string; // other?
+  condition?: string;
+  scenarios?: number[];
 };
 
-// export interface GetCampaignsResponse {
-//   count: number;
-//   items: Campaign[];
-// }
 
 export const useClientsApi = () => {
   const { axiosAuth } = useTmockApi();
@@ -73,10 +71,18 @@ export const useClientsApi = () => {
     });
   };
 
+  const addNewClient = async (name: string) => {
+    await axiosAuth.post(`/client`, {
+      name: name,
+      enabled: false
+    });
+  };
+
   return {
     prepareGetClients,
     prepareGetClientDetail,
     setClientEnabled,
     setClientName,
+    addNewClient
   }
 };

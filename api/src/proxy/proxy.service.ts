@@ -131,7 +131,7 @@ export class ProxyService {
       return null;
     }
 
-    const clientScenariosIds = clients.flatMap((c) => c.scenarios.map((s) => s.id));
+    const clientScenariosIds = clients.flatMap((c) => c.scenarios);
 
     const scenarioPath = req.url.split('/').slice(3).join('/');
     return service.scenarios.find((s) => {

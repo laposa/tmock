@@ -17,22 +17,8 @@ export class ClientsRepository {
   }
 
   async getEnabled() {
-    return (
-      await this.db.query.clients.findMany({
-        where: and(eq(clients.enabled, true), ne(clients.condition, {})),
-        with: {
-          scenarios: {
-            with: {
-              scenario: {},
-            },
-          },
-        },
-      })
-    ).map((c) => {
-      return {
-        ...c,
-        scenarios: c.scenarios.map((s) => s.scenario),
-      } as ClientWithScenariosDto;
+    return this.db.query.clients.findMany({
+        where: eq(clients.enabled, true),
     });
   }
 
@@ -52,8 +38,6 @@ export class ClientsRepository {
     const client = await this.db.insert(clients).values(data).returning({
       id: clients.id,
     });
-
-    await this.updateScenarios(client[0].id, data.scenarios);
 
     return client;
   }

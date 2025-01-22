@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { Client } from '@/apis/useClientsApi';
 import { useClientsStore } from '@/stores/clients.store';
-import { computed, ref } from 'vue';
+import { computed} from 'vue';
 
 const clientsStore = useClientsStore();
 
 const client = computed(() => clientsStore.detail ?? {
+  id: '',
   name: '',
 });
 
@@ -28,18 +28,3 @@ async function changeClientName(id: string, name: string) {
 
   </ModalWindow>
 </template>
-
-<style scoped>
-td:first-of-type, th:first-of-type {
-  width: 60px;
-}
-
-.edit {
-  color: var(--primary-medium);
-  cursor: pointer;
-}
-
-.edit:hover {
-  color: white;
-}
-</style>
