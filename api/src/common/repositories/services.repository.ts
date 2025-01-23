@@ -14,7 +14,7 @@ export class ServicesRepository {
     });
   }
 
-  async getByPath(path: string): Promise<ServiceDto> {
+  async getByPath(path: string) {
     return this.db.query.services.findFirst({
       where: (service, { eq }) => eq(service.path, path),
     });

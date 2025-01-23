@@ -11,7 +11,6 @@ import {
   integer,
   json,
 } from 'drizzle-orm/pg-core';
-import { arrayBuffer } from 'stream/consumers';
 
 
 const prefix = 'mp_';
@@ -58,7 +57,7 @@ export const scenariosRelations = relations(scenarios, ({ one }) => ({
 export const clients = pgTable(`${prefix}clients`, {
   id: serial('id').primaryKey(),
   name: varchar('name').notNull(),
-  enabled: boolean('enabled').default(true),
+  enabled: boolean('enabled').default(true).notNull(),
   condition: jsonb('condition').$type<ClientCondition>(),
   scenarios: json('allowed_scenarios').$type<number[]>(),
 });

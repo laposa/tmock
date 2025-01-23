@@ -5,10 +5,10 @@ export class ScenarioDto implements ScenarioDtoType {
   id: number;
   name: string;
   service: string;
-  requestMethod: string;
-  requestPath: string;
-  requestCondition: string;
-  responseCode: number;
-  responseHeaders: Record<string, string>;
-  responseBody: string;
+  requestMethod: string | null;
+  requestPath: string | null;
+  requestCondition: string | null;
+  responseCode: number | null;
+  responseHeaders: Record<string, string> | null;
+  responseBody: string  | null;
 }

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppDatabase, InjectDb } from '../providers/database.provider';
-import { clients, clientsScenarios, ClientWithScenariosDto } from 'database/schema';
-import { and, eq, ne, inArray } from 'drizzle-orm';
+import { clients, clientsScenarios } from 'database/schema';
+import { eq } from 'drizzle-orm';
 import { CreateClientDto, PatchClientDto } from '@/client/dtos';
 
 @Injectable()

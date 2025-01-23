@@ -133,7 +133,7 @@ export class ProxyService {
 
     const clientScenariosIds = clients.flatMap((c) => c.scenarios);
 
-    const scenarioPath = req.url.split('/').slice(3).join('/');
+    const scenarioPath = req.url!.split('/').slice(3).join('/');
     return service.scenarios.find((s) => {
       if (!clientScenariosIds.includes(s.id)) {
         return false;
@@ -148,7 +148,7 @@ export class ProxyService {
 
       if (
         s.requestMethod &&
-        s.requestMethod.toLowerCase() !== req.method.toLowerCase()
+        s.requestMethod.toLowerCase() !== req.method!.toLowerCase()
       ) {
         return false;
       }
@@ -182,22 +182,22 @@ export class ProxyService {
   private async logProxyRequest(
     req: IncomingMessage,
     res: ProxyResponse,
-    scenario?: ScenarioDto,
+    scenario?: ScenarioDto | null,
   ) {
     const ip = getClientIp(req);
     const url = req.url;
 
     let message = `${ip} ${req.method} ${url} ${res.statusCode}`;
     if (scenario) {
-      const mocked = [];
-      if (scenario.responseCode) mocked.push(`status`);
-      if (scenario.responseHeaders) mocked.push(`headers`);
-      if (scenario.responseBody) mocked.push(`body`);
+      const mocked: string[] = [];
+      if (scenario.responseCode) mocked.push('status');
+      if (scenario.responseHeaders) mocked.push('headers');
+      if (scenario.responseBody) mocked.push('body');
 
       message += ` [scenario ${scenario.name}; mocked: ${mocked.join(', ')}]`;
     }
 
-    const ms = Date.now() - res.startTime;
+    const ms = Date.now() - (res?.startTime || 0);
     message += ` ${ms}ms`;
 
     this.logger.log(message);
@@ -221,7 +221,7 @@ export class ProxyService {
   }
 
   private async getServiceByReq(req: IncomingMessage) {
-    const path = req.url.split('/')[2];
+    const path = req.url!.split('/')[2];
     const services = await this.getServices();
     return services.find((s) => s.path === path);
   }

@@ -9,7 +9,6 @@ export class ClientService {
   ) {}
 
   async create(data: CreateClientDto) {
-
     const client = await this.clientsRepository.getByName(
       data.name,
     );
@@ -21,7 +20,7 @@ export class ClientService {
     }
 
     const { id } = (await this.clientsRepository.create(data))[0];
-    return this.clientsRepository.getById(id);
+    return (await this.clientsRepository.getById(id))!;
   }
 
   async update(id: number, data: PatchClientDto) {
@@ -31,7 +30,7 @@ export class ClientService {
     }
 
     await this.clientsRepository.update(id, data);
-    return this.clientsRepository.getById(id);
+    return (await this.clientsRepository.getById(id))!;
   }
 
   async getById(id: number) {
@@ -51,14 +50,14 @@ export class ClientService {
     if (client) {
       await this.update(client.id, data);
       return {
-        client: await this.clientsRepository.getById(client.id),
+        client: (await this.clientsRepository.getById(client.id))!,
         updated: true,
       };
     }
 
     const { id } = (await this.clientsRepository.create(data))[0];
     return {
-      client: await this.clientsRepository.getById(id),
+      client: (await this.clientsRepository.getById(id))!,
       updated: false,
     };
   }

@@ -1,6 +1,6 @@
 # tmock
 
-Testing Mock Proxy
+tmock API
 
 ## Installation
 

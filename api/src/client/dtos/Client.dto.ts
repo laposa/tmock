@@ -5,7 +5,7 @@ import { ClientCondition } from '../client.interfaces';
 export class ClientDto implements ClientDtoType {
   id: number;
   name: string;
-	condition: ClientCondition;
+	condition: ClientCondition | null;
 	enabled: boolean;
-	scenarios: number[];
+	scenarios: number[] | null;
 }

@@ -33,7 +33,7 @@ export class ScenarioService {
     }
 
     const { id } = (await this.scenariosRepository.create(data))[0];
-    return this.scenariosRepository.getById(id);
+    return (await this.scenariosRepository.getById(id))!;
   }
 
   async update(id: number, data: PatchScenarioDto) {
@@ -43,7 +43,7 @@ export class ScenarioService {
     }
 
     await this.scenariosRepository.update(id, data);
-    return this.scenariosRepository.getById(id);
+    return (await this.scenariosRepository.getById(id))!;
   }
 
   async getById(id: number) {
@@ -69,14 +69,14 @@ export class ScenarioService {
     if (scenario) {
       await this.update(scenario.id, data);
       return {
-        scenario: await this.scenariosRepository.getById(scenario.id),
+        scenario: (await this.scenariosRepository.getById(scenario.id))!,
         updated: true,
       };
     }
 
     const { id } = (await this.scenariosRepository.create(data))[0];
     return {
-      scenario: await this.scenariosRepository.getById(id),
+      scenario: (await this.scenariosRepository.getById(id))!,
       updated: false,
     };
   }
@@ -99,7 +99,7 @@ export class ScenarioService {
 
     scenarios.forEach((scenario) => {
       scenario.responseBody =
-        scenario.responseBody?.length > 255
+        scenario.responseBody && scenario.responseBody.length > 255
           ? scenario.responseBody.slice(0, 255) + '...'
           : scenario.responseBody;
 

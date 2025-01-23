@@ -8,7 +8,7 @@ export class ProxyController {
   /**
    * Proxy all requests based on service path
    */
-  @All('*')
+  @All('*path')
   proxy(@Req() req, @Res() res, @Next() next) {
     return this.proxyService.middleware(req, res, next);
   }

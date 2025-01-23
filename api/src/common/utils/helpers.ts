@@ -18,9 +18,13 @@ export const evalRequestCondition = (
 };
 
 export const evalClientConditions = (
-  condition: ClientCondition,
+  condition: ClientCondition | null,
   req: IncomingMessage,
 ): boolean => {
+  if (!condition) {
+    return true;
+  }
+
   if (condition.and) {
     return condition.and.every((cond) => evalClientConditions(cond, req));
   }
@@ -48,8 +52,8 @@ export const evalClientConditions = (
 
   if (condition.headerRegex) {
     const [header, regex] = condition.headerRegex;
-    const value = req.headers[header.toLowerCase()].toString();
-    return new RegExp(regex).test(value);
+    const value = req.headers[header.toLowerCase()]?.toString();
+    return new RegExp(regex).test(value || '');
   }
 
   return true;
