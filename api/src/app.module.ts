@@ -7,12 +7,17 @@ import { CommonModule } from './common/common.module';
 import { ScenarioModule } from './scenario/scenario.module';
 import { ProxyModule } from './proxy/proxy.module';
 import { ClientModule } from './client/client.module';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 @Module({
   imports: [
     // third-party modules
     ConfigModule.forRoot({ isGlobal: true, load: [appConfig] }),
     CacheModule.register({ isGlobal: true }),
+    ServeStaticModule.forRoot({
+      rootPath: './public',
+    }),
 
     // app modules
     CommonModule,

@@ -22,6 +22,7 @@
     "@nestjs/config": "^3.2.3",
     "@nestjs/core": "^10.4.1",
     "@nestjs/platform-express": "^10.4.1",
+    "@nestjs/serve-static": "^5.0.1",
     "@nestjs/swagger": "^7.4.0",
     "@supercharge/request-ip": "^1.2.0",
     "cache-manager": "^5.7.6",

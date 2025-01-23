@@ -8,14 +8,9 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ClientAdd: typeof import('./src/components/client/ClientAdd.vue')['default']
-    ClientConditionEdit: typeof import('./src/components/client/ClientConditionEdit.vue')['default']
     ClientConditionsEdit: typeof import('./src/components/client/ClientConditionsEdit.vue')['default']
     ClientEdit: typeof import('./src/components/client/ClientEdit.vue')['default']
-    ClientEditView: typeof import('./src/components/client/ClientEditView.vue')['default']
     ClientList: typeof import('./src/components/client/ClientList.vue')['default']
-    ClientsEditView: typeof import('./src/components/client/ClientsEditView.vue')['default']
-    ClientsView: typeof import('./src/components/client/ClientsView.vue')['default']
-    copy: typeof import('./src/components/client/ClientEdit copy.vue')['default']
     MainNavigation: typeof import('./src/components/ui/MainNavigation.vue')['default']
     ModalWindow: typeof import('./src/components/ui/ModalWindow.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

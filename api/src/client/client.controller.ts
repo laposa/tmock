@@ -18,7 +18,7 @@ import { ProxyService } from '@/proxy/proxy.service';
 import { ClientDto, ClientUpsertResponse, CreateClientDto, PatchClientDto, ClientResponse } from './dtos';
 import { ApiKeyGuard } from '@/common/guards/api-key.guard';
 
-@Controller('client')
+@Controller('api/client')
 @UseGuards(ApiKeyGuard)
 export class ClientController {
   constructor(
