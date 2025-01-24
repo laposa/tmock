@@ -1,5 +1,5 @@
 import { useAxios } from '@vueuse/integrations/useAxios';
-import { useTmockApi } from './useAxiosInstance';
+import { useTmockAxios } from './useTmockAxios';
 import { computed } from 'vue';
 
 export type Client = {
@@ -12,14 +12,13 @@ export type Client = {
 
 
 export const useClientsApi = () => {
-  const { axiosAuth } = useTmockApi();
+  const tmockAxios = useTmockAxios();
 
   const prepareGetClients = () => {
-    // TODO response type? or just clients[]?
-    const axios = useAxios(
+    const axios = useAxios<Client[]>(
       '/client',
       { method: 'GET' },
-      axiosAuth,
+      tmockAxios,
       { immediate: false },
     );
 
@@ -38,41 +37,41 @@ export const useClientsApi = () => {
   };
 
   const prepareGetClientDetail = () => {
-    const axios = useAxios(
+    const axios = useAxios<{ client: Client }>(
       '/client/',
       { method: 'GET' },
-      axiosAuth,
+      tmockAxios,
       { immediate: false },
     );
 
     const load = (id: string) =>
-      axios.execute(`/client/${id}`, {}); //TODO is there a better way to call dynamic link?
+      axios.execute(`/client/${id}`, {});
 
     const reset = () => {
-      axios.data.value = [];
+      axios.data.value = undefined;
     }
 
     const data = computed(() => {
-      return axios.data.value ?? [];
+      return axios.data.value;
     })
 
     return { ...axios, data, load, reset };
   };
 
   const setClientEnabled = async (clientId: string, enabled: boolean) => {
-    await axiosAuth.patch(`/client/${clientId}`, {
+    await tmockAxios.patch(`/client/${clientId}`, {
       enabled: enabled,
     });
   };
 
   const setClientName = async (clientId: string, name: string) => {
-    await axiosAuth.patch(`/client/${clientId}`, {
+    await tmockAxios.patch(`/client/${clientId}`, {
       name: name,
     });
   };
 
   const addNewClient = async (name: string) => {
-    await axiosAuth.post(`/client`, {
+    await tmockAxios.post(`/client`, {
       name: name,
       enabled: false
     });
