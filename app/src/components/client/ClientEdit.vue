@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { useClientsStore } from '@/stores/clients.store';
-
 const clientsStore = useClientsStore();
 
 const client = computed(() => clientsStore.detail ?? {

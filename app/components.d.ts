@@ -11,9 +11,12 @@ declare module 'vue' {
     ClientConditionsEdit: typeof import('./src/components/client/ClientConditionsEdit.vue')['default']
     ClientEdit: typeof import('./src/components/client/ClientEdit.vue')['default']
     ClientList: typeof import('./src/components/client/ClientList.vue')['default']
+    ClientsView: typeof import('./src/views/ClientsView.vue')['default']
+    HomeView: typeof import('./src/views/HomeView.vue')['default']
     MainNavigation: typeof import('./src/components/ui/MainNavigation.vue')['default']
     ModalWindow: typeof import('./src/components/ui/ModalWindow.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ScenariosView: typeof import('./src/views/ScenariosView.vue')['default']
   }
 }

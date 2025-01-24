@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { closeModalWindow, openModalWindow } from '@/helpers';
-import { useClientsStore } from '@/stores/clients.store';
 
 const name = ref('');
 

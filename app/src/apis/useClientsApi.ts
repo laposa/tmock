@@ -1,5 +1,4 @@
 import { useAxios } from '@vueuse/integrations/useAxios';
-import { useTmockAxios } from './useTmockAxios';
 
 export type Client = {
   id: string;

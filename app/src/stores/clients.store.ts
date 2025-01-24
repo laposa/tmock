@@ -1,5 +1,3 @@
-import { useClientsApi, type Client } from '@/apis/useClientsApi';
-
 export const useClientsStore = defineStore('clients', () => {
 
   const clientsApi = useClientsApi();

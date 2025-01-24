@@ -1,4 +1,3 @@
-import { useConfig } from '@/composables/useConfig';
 import axios from 'axios';
 
 export const useTmockAxios = () => {

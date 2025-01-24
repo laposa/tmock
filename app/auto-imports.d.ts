@@ -65,7 +65,11 @@ declare global {
   const toValue: typeof import('vue')['toValue']
   const triggerRef: typeof import('vue')['triggerRef']
   const unref: typeof import('vue')['unref']
+  const useAppRouter: typeof import('./src/composables/useAppRouter')['useAppRouter']
   const useAttrs: typeof import('vue')['useAttrs']
+  const useClientsApi: typeof import('./src/apis/useClientsApi')['useClientsApi']
+  const useClientsStore: typeof import('./src/stores/clients.store')['useClientsStore']
+  const useConfig: typeof import('./src/composables/useConfig')['useConfig']
   const useCssModule: typeof import('vue')['useCssModule']
   const useCssVars: typeof import('vue')['useCssVars']
   const useId: typeof import('vue')['useId']
@@ -75,6 +79,7 @@ declare global {
   const useRouter: typeof import('vue-router')['useRouter']
   const useSlots: typeof import('vue')['useSlots']
   const useTemplateRef: typeof import('vue')['useTemplateRef']
+  const useTmockAxios: typeof import('./src/apis/useTmockAxios')['useTmockAxios']
   const watch: typeof import('vue')['watch']
   const watchEffect: typeof import('vue')['watchEffect']
   const watchPostEffect: typeof import('vue')['watchPostEffect']
@@ -85,4 +90,7 @@ declare global {
   // @ts-ignore
   export type { Component, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
+  // @ts-ignore
+  export type { Client } from './src/apis/useClientsApi'
+  import('./src/apis/useClientsApi')
 }

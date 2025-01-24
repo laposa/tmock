@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { openModalWindow } from '@/helpers';
-import { useClientsStore } from '@/stores/clients.store';
 
 const clientsStore = useClientsStore();
 clientsStore.load();

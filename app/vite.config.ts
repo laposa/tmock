@@ -17,6 +17,7 @@ export default defineConfig(({ command }) => {
       vueDevTools(),
       Components(),
       AutoImport({
+        dirs: ['src/apis', 'src/composables', 'src/stores'],
         imports: [
           'vue',
           'vue-router',
