@@ -1,6 +1,4 @@
-import { defineStore } from 'pinia'
 import { useClientsApi, type Client } from '@/apis/useClientsApi';
-import { computed } from 'vue';
 
 export const useClientsStore = defineStore('clients', () => {
 
@@ -10,7 +8,7 @@ export const useClientsStore = defineStore('clients', () => {
   const getClientDetail = clientsApi.prepareGetClientDetail();
 
   const clients = computed(() => getClients.data.value ?? []);
-  const detail = computed<null | Client>(() => getClientDetail.data.value.client);
+  const detail = computed<Client | undefined>(() => getClientDetail.data.value?.client);
 
   async function reset() {
     getClients.reset();

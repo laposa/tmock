@@ -1,5 +1,3 @@
-import { useRoute, useRouter } from 'vue-router';
-
 export const useAppRouter = () => {
   const router = useRouter();
   const route = useRoute();

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useClientsStore } from '@/stores/clients.store';
-import { computed} from 'vue';
 
 const clientsStore = useClientsStore();
 

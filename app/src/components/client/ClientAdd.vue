@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { closeModalWindow, openModalWindow } from '@/helpers';
 import { useClientsStore } from '@/stores/clients.store';
-import { ref } from 'vue';
 
 const name = ref('');
 
@@ -19,7 +18,7 @@ async function addNewClient() {
   <div>
     <v-btn @click="openModalWindow('clientAdd')" color="indigo">Add client</v-btn>
   
-    <ModalWindow :id="'clientAdd'">
+    <ModalWindow id="clientAdd">
   
       <h2>Add new client</h2>
       <br>

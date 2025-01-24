@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { openModalWindow } from '@/helpers';
 import { useClientsStore } from '@/stores/clients.store';
-import { computed } from 'vue';
 
 const clientsStore = useClientsStore();
 clientsStore.load();

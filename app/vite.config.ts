@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import Components from 'unplugin-vue-components/vite';
+import AutoImport from 'unplugin-auto-import/vite';
 import vuetify from 'vite-plugin-vuetify';
 import { createHtmlPlugin } from 'vite-plugin-html';
 
@@ -15,6 +16,13 @@ export default defineConfig(({ command }) => {
       vuetify(),
       vueDevTools(),
       Components(),
+      AutoImport({
+        imports: [
+          'vue',
+          'vue-router',
+          'pinia',
+        ]
+      }),
       createHtmlPlugin({
         inject: {
           data: {
