@@ -59,7 +59,6 @@ export const clients = pgTable(`${prefix}clients`, {
   name: varchar('name').notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   condition: jsonb('condition').$type<ClientCondition>(),
-  scenarios: json('allowed_scenarios').$type<number[]>(),
 });
 
 export const clientsRelations = relations(clients, ({ many }) => ({

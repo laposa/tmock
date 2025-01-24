@@ -8,7 +8,6 @@ import { ScenarioModule } from './scenario/scenario.module';
 import { ProxyModule } from './proxy/proxy.module';
 import { ClientModule } from './client/client.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
 
 @Module({
   imports: [

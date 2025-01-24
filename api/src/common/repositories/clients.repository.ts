@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppDatabase, InjectDb } from '../providers/database.provider';
-import { clients, clientsScenarios } from 'database/schema';
-import { eq } from 'drizzle-orm';
+import { clients, clientsScenarios, ClientWithScenariosDto } from 'database/schema';
+import { eq, and, ne, asc } from 'drizzle-orm';
 import { CreateClientDto, PatchClientDto } from '@/client/dtos';
 
 @Injectable()
@@ -17,11 +17,25 @@ export class ClientsRepository {
   }
 
   async getEnabled() {
-    return this.db.query.clients.findMany({
-        where: eq(clients.enabled, true),
+    return (
+      await this.db.query.clients.findMany({
+        where: and(eq(clients.enabled, true), ne(clients.condition, {})),
+        with: {
+          scenarios: {
+            with: {
+              scenario: {},
+            },
+          },
+        },
+        orderBy: [asc(clients.id)],
+      })
+    ).map((c) => {
+      return {
+        ...c,
+        scenarios: c.scenarios.map((s) => s.scenario),
+      } as ClientWithScenariosDto;
     });
   }
-
   async getByName(name: string) {
     return this.db.query.clients.findFirst({
       where: eq(clients.name, name),
@@ -39,6 +53,10 @@ export class ClientsRepository {
       id: clients.id,
     });
 
+    if (data.scenarios) {
+      await this.updateScenarios(client[0].id, data.scenarios);
+    }
+
     return client;
   }
 
@@ -50,21 +68,23 @@ export class ClientsRepository {
       .returning({
         id: clients.id,
       });
-    
-    if(data.scenarios) {
+
+    if (data.scenarios) {
       await this.updateScenarios(client[0].id, data.scenarios);
     }
-    
+
     return client;
   }
 
   async updateScenarios(id: number, scenarios: number[]) {
-    await this.db.delete(clientsScenarios).where(eq(clientsScenarios.clientId, id));
+    await this.db
+      .delete(clientsScenarios)
+      .where(eq(clientsScenarios.clientId, id));
 
     if (!scenarios.length) {
-      return
+      return;
     }
-    
+
     return this.db
       .insert(clientsScenarios)
       .values(scenarios.map((scenarioId) => ({ clientId: id, scenarioId })));

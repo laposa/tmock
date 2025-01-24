@@ -18,18 +18,14 @@ export default defineConfig(({ command }) => {
       Components(),
       AutoImport({
         dirs: ['src/apis', 'src/composables', 'src/stores'],
-        imports: [
-          'vue',
-          'vue-router',
-          'pinia',
-        ]
+        imports: ['vue', 'vue-router', 'pinia'],
       }),
       createHtmlPlugin({
         inject: {
           data: {
             MAIN_FILE: command === 'build' ? 'main.build.ts' : 'main.local.ts',
-          }
-        }
+          },
+        },
       }),
     ],
     resolve: {
@@ -39,6 +35,9 @@ export default defineConfig(({ command }) => {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
     },
+    server: {
+      port: 8080,
+      open: '/',
+    },
   }
-
-})
+});
