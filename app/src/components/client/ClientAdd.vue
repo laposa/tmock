@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { closeModalWindow, openModalWindow } from '@/helpers';
-
 const name = ref('');
 
 const clientsStore = useClientsStore();
+const uiStore = useUiStore();
 
 async function addNewClient() {
   await clientsStore.addNewClient(name.value);
-  closeModalWindow('clientAdd');
+  uiStore.closeDialog('client-add');
   clientsStore.load();
   name.value = '';
 }
@@ -15,19 +14,12 @@ async function addNewClient() {
 
 <template>
   <div>
-    <v-btn @click="openModalWindow('clientAdd')" color="indigo">Add client</v-btn>
-  
-    <ModalWindow id="clientAdd">
-  
-      <h2>Add new client</h2>
-      <br>
-      <v-text-field
-        label="Name"
-        v-model="name"
-      ></v-text-field>
+    <v-btn @click="uiStore.openDialog('client-add')" color="indigo">Add client</v-btn>
+
+    <ModalWindow id="client-add" title="Add new client">
+      <v-text-field label="Name" v-model="name"></v-text-field>
 
       <v-btn color="indigo" @click="addNewClient()">Create</v-btn>
-  
     </ModalWindow>
   </div>
 </template>

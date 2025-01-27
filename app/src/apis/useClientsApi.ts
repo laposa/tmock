@@ -4,54 +4,55 @@ export type Client = {
   id: string;
   name: string;
   enabled: boolean;
-  condition?: string;
+  condition?: ClientCondition;
   scenarios?: number[];
 };
 
+export interface ClientCondition {
+  and?: ClientCondition[];
+  or?: ClientCondition[];
+  not?: boolean;
+  headerMatch?: { header: string; value: string };
+  headerRegex?: { header: string; value: string };
+  ip?: string;
+  cidr?: string;
+}
 
 export const useClientsApi = () => {
   const tmockAxios = useTmockAxios();
 
   const prepareGetClients = () => {
-    const axios = useAxios<Client[]>(
-      '/client',
-      { method: 'GET' },
-      tmockAxios,
-      { immediate: false },
-    );
+    const axios = useAxios<Client[]>('/client', { method: 'GET' }, tmockAxios, {
+      immediate: false,
+    });
 
-    const load = () =>
-      axios.execute(undefined, {});
+    const load = () => axios.execute(undefined, {});
 
     const reset = () => {
       axios.data.value = [];
-    }
+    };
 
     const data = computed(() => {
       return axios.data.value ?? [];
-    })
+    });
 
     return { ...axios, data, load, reset };
   };
 
   const prepareGetClientDetail = () => {
-    const axios = useAxios<{ client: Client }>(
-      '/client/',
-      { method: 'GET' },
-      tmockAxios,
-      { immediate: false },
-    );
+    const axios = useAxios<{ client: Client }>('/client/', { method: 'GET' }, tmockAxios, {
+      immediate: false,
+    });
 
-    const load = (id: string) =>
-      axios.execute(`/client/${id}`, {});
+    const load = (id: string) => axios.execute(`/client/${id}`, {});
 
     const reset = () => {
       axios.data.value = undefined;
-    }
+    };
 
     const data = computed(() => {
       return axios.data.value;
-    })
+    });
 
     return { ...axios, data, load, reset };
   };
@@ -71,7 +72,7 @@ export const useClientsApi = () => {
   const addNewClient = async (name: string) => {
     await tmockAxios.post(`/client`, {
       name: name,
-      enabled: false
+      enabled: false,
     });
   };
 
@@ -80,6 +81,6 @@ export const useClientsApi = () => {
     prepareGetClientDetail,
     setClientEnabled,
     setClientName,
-    addNewClient
-  }
+    addNewClient,
+  };
 };

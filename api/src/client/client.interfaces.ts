@@ -1,9 +1,9 @@
 export interface ClientCondition {
   and?: ClientCondition[];
   or?: ClientCondition[];
-  not?: ClientCondition;
-	headerMatch?: [string, string];
-	headerRegex?: [string, string];
-	ip?: [string];
-	cidr?: [string];
+  not?: boolean;
+  headerMatch?: { header: string; value: string };
+  headerRegex?: { header: string; value: string };
+  ip?: string;
+  cidr?: string;
 }

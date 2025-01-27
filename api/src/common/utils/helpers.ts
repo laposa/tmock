@@ -25,39 +25,41 @@ export const evalClientConditions = (
     return true;
   }
 
+  const bool = condition.not ? false : true;
+
   if (condition.and) {
-    return condition.and.every((cond) => evalClientConditions(cond, req));
+    return (
+      condition.and.every((cond) => evalClientConditions(cond, req)) === bool
+    );
   }
 
   if (condition.or) {
-    return condition.or.some((cond) => evalClientConditions(cond, req));
-  }
-
-  if (condition.not) {
-    return !condition.not;
+    return (
+      condition.or.some((cond) => evalClientConditions(cond, req)) === bool
+    );
   }
 
   if (condition.ip) {
-    return condition.ip.includes(getClientIp(req));
+    return condition.ip.includes(getClientIp(req)) === bool;
   }
 
-  if(condition.cidr) {
-    return isIpInCidr(getClientIp(req), condition.cidr.toString());
+  if (condition.cidr) {
+    return isIpInCidr(getClientIp(req), condition.cidr.toString()) === bool;
   }
 
   if (condition.headerMatch) {
-    const [header, value] = condition.headerMatch;
-    return req.headers[header.toLowerCase()] === value;
+    const { header, value } = condition.headerMatch;
+    return (req.headers[header.toLowerCase()] === value) === bool;
   }
 
   if (condition.headerRegex) {
-    const [header, regex] = condition.headerRegex;
+    const { header, value: regex } = condition.headerRegex;
     const value = req.headers[header.toLowerCase()]?.toString();
-    return new RegExp(regex).test(value || '');
+    return new RegExp(regex).test(value || '') === bool;
   }
 
   return true;
-}
+};
 
 export const getClientIp = (req: any) =>
   req.ip ||
@@ -66,18 +68,21 @@ export const getClientIp = (req: any) =>
   undefined;
 
 function ipToBinary(ip: string): string {
-    return ip.split('.').map(num => parseInt(num, 10).toString(2).padStart(8, '0')).join('');
+  return ip
+    .split('.')
+    .map((num) => parseInt(num, 10).toString(2).padStart(8, '0'))
+    .join('');
 }
 
 function isIpInCidr(ip: string, cidr: string): boolean {
-    const [baseIp, subnetMaskLength] = cidr.split('/');
-    const subnetMask = parseInt(subnetMaskLength, 10);
+  const [baseIp, subnetMaskLength] = cidr.split('/');
+  const subnetMask = parseInt(subnetMaskLength, 10);
 
-    const ipBinary = ipToBinary(ip);
-    const baseIpBinary = ipToBinary(baseIp);
+  const ipBinary = ipToBinary(ip);
+  const baseIpBinary = ipToBinary(baseIp);
 
-    const ipSubnet = ipBinary.substring(0, subnetMask);
-    const baseIpSubnet = baseIpBinary.substring(0, subnetMask);
+  const ipSubnet = ipBinary.substring(0, subnetMask);
+  const baseIpSubnet = baseIpBinary.substring(0, subnetMask);
 
-    return ipSubnet === baseIpSubnet;
+  return ipSubnet === baseIpSubnet;
 }

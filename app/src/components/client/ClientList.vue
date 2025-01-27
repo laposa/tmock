@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { openModalWindow } from '@/helpers';
-
+const uiStore = useUiStore();
 const clientsStore = useClientsStore();
 clientsStore.load();
 
 const clients = computed(() => clientsStore.clients ?? []);
 
 function openClientEdit(clientId: string) {
-  openModalWindow('clientEdit');
+  uiStore.openDialog('client-edit');
   clientsStore.loadClientDetail(clientId);
 }
 
 function openClientConditionsEdit(clientId: string) {
-  openModalWindow('clientConditionsEdit');
+  uiStore.openDialog('client-conditions');
   clientsStore.loadClientDetail(clientId);
 }
 </script>
@@ -32,9 +31,9 @@ function openClientConditionsEdit(clientId: string) {
       <tbody>
         <tr v-for="client in clients" :key="client.id">
           <td>
-            <v-switch 
-              v-model="client.enabled" 
-              color="indigo" 
+            <v-switch
+              v-model="client.enabled"
+              color="indigo"
               hide-details
               @change="clientsStore.setClientEnabled(client.id, client.enabled)"
             />
@@ -52,18 +51,18 @@ function openClientConditionsEdit(clientId: string) {
 </template>
 
 <style scoped>
-
 .v-table {
   border-radius: 10px;
 }
 
-td:first-of-type, th:first-of-type {
+td:first-of-type,
+th:first-of-type {
   width: 60px;
 }
 .edit {
   color: var(--primary);
   cursor: pointer;
-  transition: 0.3s; 
+  transition: 0.3s;
 }
 
 .edit:hover {

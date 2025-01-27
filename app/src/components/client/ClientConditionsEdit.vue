@@ -1,19 +1,20 @@
 <script setup lang="ts">
+const clientsStore = useClientsStore();
+
+const condition = ref<ClientCondition | null>(null);
+watch(
+  () => clientsStore.detail?.condition,
+  (value) => {
+    if (value) {
+      condition.value = value;
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
-  <ModalWindow :id="'clientConditionsEdit'">
-
-    <h2>Edit client conditions</h2>
-    <br>
-    <v-alert
-      type="info"
-      color="#880000"
-      icon="mdi-alert-circle"
-      border
-      >
-      This page is under construction
-    </v-alert>
-
+  <ModalWindow id="client-conditions" title="Edit Client Conditions">
+    <ClientConditionGroup v-if="condition" v-model="condition" :is-top-level="true" />
   </ModalWindow>
 </template>

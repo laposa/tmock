@@ -80,6 +80,7 @@ declare global {
   const useSlots: typeof import('vue')['useSlots']
   const useTemplateRef: typeof import('vue')['useTemplateRef']
   const useTmockAxios: typeof import('./src/apis/useTmockAxios')['useTmockAxios']
+  const useUiStore: typeof import('./src/stores/ui.store')['useUiStore']
   const watch: typeof import('vue')['watch']
   const watchEffect: typeof import('vue')['watchEffect']
   const watchPostEffect: typeof import('vue')['watchPostEffect']
@@ -91,6 +92,9 @@ declare global {
   export type { Component, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
-  export type { Client } from './src/apis/useClientsApi'
+  export type { Client, ClientCondition } from './src/apis/useClientsApi'
   import('./src/apis/useClientsApi')
+  // @ts-ignore
+  export type { DialogType } from './src/stores/ui.store'
+  import('./src/stores/ui.store')
 }
