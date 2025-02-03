@@ -7,6 +7,7 @@ const condition = defineModel<ClientCondition>({
 
 const emit = defineEmits<{
   delete: [];
+  'update:model-value': [ClientCondition];
 }>();
 
 withDefaults(defineProps<{ isTopLevel?: boolean }>(), { isTopLevel: false });
@@ -26,6 +27,8 @@ const subConditions = computed({
     } else if (condition.value.or) {
       condition.value.or = value;
     }
+
+    emit('update:model-value', condition.value);
   },
 });
 
@@ -37,6 +40,8 @@ function switchBoolean() {
     condition.value.and = condition.value.or;
     delete condition.value.or;
   }
+
+  emit('update:model-value', condition.value);
 }
 
 function addCondition(type: keyof ClientCondition) {
@@ -47,11 +52,17 @@ function addCondition(type: keyof ClientCondition) {
     newCondition = { [type]: { header: '', value: '' } };
   }
 
-  subConditions.value.push(newCondition);
+  subConditions.value = [...subConditions.value, newCondition];
+}
+
+function updateCondition(index: number, value: ClientCondition) {
+  subConditions.value = subConditions.value.map((subCondition, i) =>
+    i === index ? value : subCondition,
+  );
 }
 
 function removeCondition(index: number) {
-  subConditions.value.splice(index, 1);
+  subConditions.value = subConditions.value.filter((_, i) => i !== index);
 }
 </script>
 
@@ -72,13 +83,13 @@ function removeCondition(index: number) {
         <ClientConditionGroup
           v-if="subCondition.and || subCondition.or"
           :model-value="subCondition"
-          @update:model-value="(val) => (subConditions[index] = val)"
+          @update:model-value="(val) => updateCondition(index, val)"
           @delete="removeCondition(index)"
         />
         <ClientConditionItem
           v-else
           :model-value="subCondition"
-          @update:model-value="(val) => (subConditions[index] = val)"
+          @update:model-value="(val) => updateCondition(index, val)"
           @delete="removeCondition(index)"
         />
 

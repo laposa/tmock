@@ -7,6 +7,7 @@ const condition = defineModel<ClientCondition>({
 
 const emit = defineEmits<{
   delete: [];
+  'update:model-value': [ClientCondition];
 }>();
 
 const ruleName = computed(() => {
@@ -28,9 +29,13 @@ const className = computed(() => ruleName.value.toLowerCase().replace(' ', '-'))
 const ruleOperator = computed(() => {
   const pre = condition.value.not ? 'Not ' : '';
 
-  if (condition.value.headerMatch !== undefined || condition.value.headerRegex !== undefined) {
+  if (condition.value.headerRegex !== undefined) {
     return pre + 'Matches';
-  } else if (condition.value.ip !== undefined || condition.value.cidr !== undefined) {
+  } else if (
+    condition.value.headerMatch !== undefined ||
+    condition.value.ip !== undefined ||
+    condition.value.cidr !== undefined
+  ) {
     return pre + 'Equals';
   }
 
@@ -52,15 +57,17 @@ const ruleValue = computed({
     return '';
   },
   set: (value: string) => {
-    if (condition.value.headerMatch) {
+    if (condition.value.headerMatch !== undefined) {
       condition.value.headerMatch.value = value;
-    } else if (condition.value.headerRegex) {
+    } else if (condition.value.headerRegex !== undefined) {
       condition.value.headerRegex.value = value;
-    } else if (condition.value.ip) {
+    } else if (condition.value.ip !== undefined) {
       condition.value.ip = value;
-    } else if (condition.value.cidr) {
+    } else if (condition.value.cidr !== undefined) {
       condition.value.cidr = value;
     }
+
+    emit('update:model-value', condition.value);
   },
 });
 
@@ -75,11 +82,13 @@ const headerValue = computed({
     return '';
   },
   set: (value: string) => {
-    if (condition.value.headerMatch) {
+    if (condition.value.headerMatch !== undefined) {
       condition.value.headerMatch.header = value;
-    } else if (condition.value.headerRegex) {
+    } else if (condition.value.headerRegex !== undefined) {
       condition.value.headerRegex.header = value;
     }
+
+    emit('update:model-value', condition.value);
   },
 });
 </script>

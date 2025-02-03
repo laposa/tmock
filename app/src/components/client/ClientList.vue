@@ -1,18 +1,37 @@
 <script setup lang="ts">
 const uiStore = useUiStore();
 const clientsStore = useClientsStore();
+const clientsApi = useClientsApi();
+const { snackbarWrapper } = useSnackbarWrapper();
+
 clientsStore.load();
 
 const clients = computed(() => clientsStore.clients ?? []);
 
-function openClientEdit(clientId: string) {
+function openClientEdit(client: Client) {
+  clientsStore.setDetail(client);
   uiStore.openDialog('client-edit');
-  clientsStore.loadClientDetail(clientId);
 }
 
-function openClientConditionsEdit(clientId: string) {
+function openClientConditionsEdit(client: Client) {
+  clientsStore.setDetail(client);
   uiStore.openDialog('client-conditions');
-  clientsStore.loadClientDetail(clientId);
+}
+
+async function toggleEnabled(client: Client, enabled: boolean) {
+  const msg = enabled ? 'enabled' : 'disabled';
+
+  await snackbarWrapper(
+    {
+      errorTitle: `Failed to toggle client ${client.name}`,
+      successMessage: `Client <strong>${client.name}</strong> ${msg}`,
+    },
+    async () => {
+      await clientsApi.setClientEnabled(client.id, enabled);
+    },
+  );
+
+  await clientsStore.load();
 }
 </script>
 
@@ -33,15 +52,15 @@ function openClientConditionsEdit(clientId: string) {
           <td>
             <v-switch
               v-model="client.enabled"
+              @update:model-value="(val) => toggleEnabled(client, val || false)"
               color="indigo"
               hide-details
-              @change="clientsStore.setClientEnabled(client.id, client.enabled)"
             />
           </td>
           <td>
-            <span class="edit" @click="openClientEdit(client.id)">{{ client.name }}</span>
+            <span class="edit" @click="openClientEdit(client)">{{ client.name }}</span>
           </td>
-          <td><span class="edit" @click="openClientConditionsEdit(client.id)">Conditions</span></td>
+          <td><span class="edit" @click="openClientConditionsEdit(client)">Conditions</span></td>
           <!-- TODO scenario chips when scenarios are implemented -->
           <td>{{ client.scenarios }}</td>
         </tr>

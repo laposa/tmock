@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const clientsStore = useClientsStore();
 </script>
 
 <template>
@@ -8,16 +9,19 @@
       <ClientAdd></ClientAdd>
     </div>
     <ClientList></ClientList>
-    <ClientEdit></ClientEdit>
-    <ClientConditionsEdit></ClientConditionsEdit>
+    <ClientEdit v-if="clientsStore.detail" :client="clientsStore.detail"></ClientEdit>
+    <ClientConditionsEdit
+      v-if="clientsStore.detail"
+      :client="clientsStore.detail"
+    ></ClientConditionsEdit>
   </main>
 </template>
 
 <style scoped>
-  .heading {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-  }
+.heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
 </style>

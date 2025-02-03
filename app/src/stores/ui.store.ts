@@ -2,6 +2,7 @@ export type DialogType = 'client-add' | 'client-edit' | 'client-conditions';
 
 export const useUiStore = defineStore('ui', () => {
   const dialogs = ref<DialogType[]>([]);
+  const clientsStore = useClientsStore();
 
   function openDialog(type: DialogType) {
     dialogs.value.push(type);
@@ -9,6 +10,7 @@ export const useUiStore = defineStore('ui', () => {
 
   function closeDialog(type: DialogType) {
     dialogs.value = dialogs.value.filter((t) => t !== type);
+    clientsStore.setDetail(null);
   }
 
   function isOpen(type: DialogType) {

@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ClientsRepository } from '@/common/repositories/clients.repository';
 import { CreateClientDto, PatchClientDto } from './dtos';
+import { isEmptyCondition } from '@/common/utils/helpers';
 
 @Injectable()
 export class ClientService {
@@ -27,6 +28,12 @@ export class ClientService {
     const client = await this.clientsRepository.getById(id);
     if (!client) {
       throw new NotFoundException(`Client with id [${id}] was not found.`);
+    }
+
+    if (data.enabled === true && isEmptyCondition(client.condition || {})) {
+      throw new BadRequestException(
+        'Cannot enable client without a condition.',
+      );
     }
 
     await this.clientsRepository.update(id, data);
@@ -83,3 +90,4 @@ export class ClientService {
     return this.clientsRepository.getAll();
   }
 }
+

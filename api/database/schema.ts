@@ -9,9 +9,7 @@ import {
   smallint,
   primaryKey,
   integer,
-  json,
 } from 'drizzle-orm/pg-core';
-
 
 const prefix = 'mp_';
 
@@ -86,17 +84,19 @@ export const clientsScenarios = pgTable(
   }),
 );
 
-export const clientsScenariosRelations = relations(clientsScenarios, ({ one }) => ({
-  client: one(clients, {
-    fields: [clientsScenarios.clientId],
-    references: [clients.id],
+export const clientsScenariosRelations = relations(
+  clientsScenarios,
+  ({ one }) => ({
+    client: one(clients, {
+      fields: [clientsScenarios.clientId],
+      references: [clients.id],
+    }),
+    scenario: one(scenarios, {
+      fields: [clientsScenarios.scenarioId],
+      references: [scenarios.id],
+    }),
   }),
-  scenario: one(scenarios, {
-    fields: [clientsScenarios.scenarioId],
-    references: [scenarios.id],
-  }),
-}));
-
+);
 
 // type definitions
 export type ScenarioDto = typeof scenarios.$inferSelect;

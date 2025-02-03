@@ -78,6 +78,8 @@ declare global {
   const useRoute: typeof import('vue-router')['useRoute']
   const useRouter: typeof import('vue-router')['useRouter']
   const useSlots: typeof import('vue')['useSlots']
+  const useSnackbarWrapper: typeof import('./src/composables/useSnackbarWrapper')['useSnackbarWrapper']
+  const useSnackbarsStore: typeof import('./src/stores/snackbars.store')['useSnackbarsStore']
   const useTemplateRef: typeof import('vue')['useTemplateRef']
   const useTmockAxios: typeof import('./src/apis/useTmockAxios')['useTmockAxios']
   const useUiStore: typeof import('./src/stores/ui.store')['useUiStore']
@@ -94,6 +96,12 @@ declare global {
   // @ts-ignore
   export type { Client, ClientCondition } from './src/apis/useClientsApi'
   import('./src/apis/useClientsApi')
+  // @ts-ignore
+  export type { SnackbarCatchErrorOpts } from './src/composables/useSnackbarWrapper'
+  import('./src/composables/useSnackbarWrapper')
+  // @ts-ignore
+  export type { SnackbarType, SnackbarItem } from './src/stores/snackbars.store'
+  import('./src/stores/snackbars.store')
   // @ts-ignore
   export type { DialogType } from './src/stores/ui.store'
   import('./src/stores/ui.store')

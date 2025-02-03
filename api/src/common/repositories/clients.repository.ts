@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { AppDatabase, InjectDb } from '../providers/database.provider';
-import { clients, clientsScenarios, ClientWithScenariosDto } from 'database/schema';
+import {
+  clients,
+  clientsScenarios,
+  ClientWithScenariosDto,
+} from 'database/schema';
 import { eq, and, ne, asc } from 'drizzle-orm';
 import { CreateClientDto, PatchClientDto } from '@/client/dtos';
 
@@ -9,7 +13,7 @@ export class ClientsRepository {
   constructor(@InjectDb() private db: AppDatabase) {}
 
   async getAll() {
-    return this.db.select().from(clients);
+    return this.db.select().from(clients).orderBy(clients.id);
   }
 
   async disableAll() {

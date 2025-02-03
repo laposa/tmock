@@ -86,3 +86,14 @@ function isIpInCidr(ip: string, cidr: string): boolean {
 
   return ipSubnet === baseIpSubnet;
 }
+
+export function isEmptyCondition(condition: ClientCondition): boolean {
+  return (
+    !condition.and?.length &&
+    !condition.or?.length &&
+    !condition.ip?.length &&
+    !condition.cidr?.length &&
+    !condition.headerMatch &&
+    !condition.headerRegex
+  );
+}

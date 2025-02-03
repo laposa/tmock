@@ -39,48 +39,36 @@ export const useClientsApi = () => {
     return { ...axios, data, load, reset };
   };
 
-  const prepareGetClientDetail = () => {
-    const axios = useAxios<{ client: Client }>('/client/', { method: 'GET' }, tmockAxios, {
-      immediate: false,
-    });
-
-    const load = (id: string) => axios.execute(`/client/${id}`, {});
-
-    const reset = () => {
-      axios.data.value = undefined;
-    };
-
-    const data = computed(() => {
-      return axios.data.value;
-    });
-
-    return { ...axios, data, load, reset };
-  };
-
   const setClientEnabled = async (clientId: string, enabled: boolean) => {
     await tmockAxios.patch(`/client/${clientId}`, {
-      enabled: enabled,
+      enabled,
     });
   };
 
   const setClientName = async (clientId: string, name: string) => {
     await tmockAxios.patch(`/client/${clientId}`, {
-      name: name,
+      name,
+    });
+  };
+  
+  const setClientCondition = async (clientId: string, condition: ClientCondition) => {
+    await tmockAxios.patch(`/client/${clientId}`, {
+      condition,
     });
   };
 
   const addNewClient = async (name: string) => {
     await tmockAxios.post(`/client`, {
-      name: name,
+      name,
       enabled: false,
     });
   };
 
   return {
     prepareGetClients,
-    prepareGetClientDetail,
     setClientEnabled,
     setClientName,
     addNewClient,
+    setClientCondition,
   };
 };

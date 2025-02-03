@@ -1,20 +1,43 @@
 <script setup lang="ts">
-const clientsStore = useClientsStore();
+import type { Client } from '@/apis/useClientsApi';
 
-const condition = ref<ClientCondition | null>(null);
-watch(
-  () => clientsStore.detail?.condition,
-  (value) => {
-    if (value) {
-      condition.value = value;
-    }
-  },
-  { immediate: true },
-);
+const clientsStore = useClientsStore();
+const clientsApi = useClientsApi();
+const { snackbarWrapper } = useSnackbarWrapper();
+
+const props = defineProps<{
+  client: Client;
+}>();
+
+const condition = ref(structuredClone(toRaw(props.client.condition) || { and: [] }));
+const isSaving = ref(false);
+
+async function saveClientCondition() {
+  isSaving.value = true;
+
+  await snackbarWrapper(
+    {
+      errorTitle: `Failed to update condition for client ${props.client.name}`,
+      successMessage: `Condition for client <strong>${props.client.name}</strong> updated`,
+    },
+    async () => {
+      await clientsApi.setClientCondition(props.client.id, condition.value);
+      await clientsStore.load();
+    },
+  );
+
+  isSaving.value = false;
+}
 </script>
 
 <template>
   <ModalWindow id="client-conditions" title="Edit Client Conditions">
-    <ClientConditionGroup v-if="condition" v-model="condition" :is-top-level="true" />
+    <ClientConditionGroup v-model="condition" :is-top-level="true" />
+
+    <template #actions>
+      <v-btn @click="saveClientCondition()" color="primary" :disabled="isSaving" :loading="isSaving"
+        >Save</v-btn
+      >
+    </template>
   </ModalWindow>
 </template>

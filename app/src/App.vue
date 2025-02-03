@@ -1,12 +1,12 @@
-<script setup lang="ts">
-</script>
+<script setup lang="ts"></script>
 
 <template>
   <div class="content">
     <header>
       <MainNavigation></MainNavigation>
+      <SnackbarsList></SnackbarsList>
     </header>
-  
+
     <main>
       <RouterView />
     </main>

@@ -1,11 +1,10 @@
-<script setup lang="ts">
-</script>
+<script setup lang="ts"></script>
 
 <template>
   <nav>
-    <a href="/" class="logo">Testing Mock Proxy</a>
+    <RouterLink to="/" class="logo">Testing Mock Proxy</RouterLink>
     <div class="menu">
-      <RouterLink to="/clients">Clients</RouterLink>
+      <RouterLink to="/">Clients</RouterLink>
       <RouterLink to="/scenarios">Scenarios</RouterLink>
     </div>
   </nav>

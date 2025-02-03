@@ -1,26 +1,32 @@
 <script setup lang="ts">
+import type { Client } from '@/apis/useClientsApi';
+
 const clientsStore = useClientsStore();
+const clientsApi = useClientsApi();
+const { snackbarWrapper } = useSnackbarWrapper();
 
-const client = computed(
-  () =>
-    clientsStore.detail ?? {
-      id: '',
-      name: '',
+const props = defineProps<{
+  client: Client;
+}>();
+
+const name = ref(props.client.name);
+
+async function changeClientName() {
+  snackbarWrapper(
+    {
+      errorTitle: `Failed to rename client ${props.client.name}`,
+      successMessage: `Client <strong>${props.client.name}</strong> renamed to <strong>${name.value}</strong>`,
     },
-);
-
-async function changeClientName(id: string, name: string) {
-  await clientsStore.setClientName(id, name);
-  clientsStore.load();
+    async () => {
+      await clientsApi.setClientName(props.client.id, name.value);
+      await clientsStore.load();
+    },
+  );
 }
 </script>
 
 <template>
   <ModalWindow id="client-edit" title="Edit Client">
-    <v-text-field
-      label="Name"
-      v-model="client.name"
-      @change="changeClientName(client.id, client.name)"
-    ></v-text-field>
+    <v-text-field label="Name" v-model="name" @change="changeClientName()"></v-text-field>
   </ModalWindow>
 </template>
