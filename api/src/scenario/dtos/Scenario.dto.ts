@@ -10,5 +10,5 @@ export class ScenarioDto implements ScenarioDtoType {
   requestCondition: string | null;
   responseCode: number | null;
   responseHeaders: Record<string, string> | null;
-  responseBody: string  | null;
+  responseBody: string | null;
 }

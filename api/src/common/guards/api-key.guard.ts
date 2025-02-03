@@ -6,7 +6,7 @@ import { AppConfig, InjectConfig } from '@/app.config';
 export class ApiKeyGuard implements CanActivate {
   constructor(@InjectConfig() protected readonly config: AppConfig) {}
 
-  async canActivate(context: ExecutionContext) {
+  canActivate(context: ExecutionContext) {
     if (!this.config.apiKey) {
       return true;
     }

@@ -22,7 +22,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
     CommonModule,
     ScenarioModule,
     ProxyModule,
-    ClientModule
+    ClientModule,
   ],
   controllers: [AppController],
 })

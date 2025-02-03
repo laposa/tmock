@@ -8,7 +8,11 @@ import {
 } from 'http-proxy-middleware';
 import { ServicesRepository } from '@/common/repositories/services.repository';
 import { AppConfig, InjectConfig } from '@/app.config';
-import { evalClientConditions, evalRequestCondition, getClientIp } from '@/common/utils/helpers';
+import {
+  evalClientConditions,
+  evalRequestCondition,
+  getClientIp,
+} from '@/common/utils/helpers';
 import { ScenarioDto, ServiceWithScenariosDto } from 'database/schema';
 import { AppLoggerService } from '@/common/utils/app-logger.service';
 import { TemplateService } from './services/template.service';
@@ -37,6 +41,7 @@ export class ProxyService {
       changeOrigin: true,
       on: {
         proxyReq: (proxyReq, req, res) => this.onProxyReq(proxyReq, req, res),
+        // eslint-disable-next-line @typescript-eslint/no-misused-promises
         proxyRes: responseInterceptor(
           async (responseBuffer, proxyRes, req, res) =>
             this.onProxyRes(responseBuffer, proxyRes, req, res),
@@ -54,7 +59,7 @@ export class ProxyService {
     return service.upstreamUrl;
   }
 
-  private async onProxyReq(
+  onProxyReq(
     proxyReq: ClientRequest,
     req: IncomingMessage,
     res: ProxyResponse,
@@ -98,10 +103,7 @@ export class ProxyService {
 
     if (scenario) {
       if (scenario.responseHeaders) {
-        this.applyHeaders(
-          res,
-          scenario.responseHeaders as Record<string, string>,
-        );
+        this.applyHeaders(res, scenario.responseHeaders);
       }
 
       if (scenario.responseCode) {
@@ -131,7 +133,9 @@ export class ProxyService {
       return null;
     }
 
-    const clientScenariosIds = clients.flatMap((c) => c.scenarios.map((s) => s.id));
+    const clientScenariosIds = clients.flatMap((c) =>
+      c.scenarios.map((s) => s.id),
+    );
 
     const scenarioPath = req.url!.split('/').slice(3).join('/');
     return service.scenarios.find((s) => {
@@ -179,7 +183,7 @@ export class ProxyService {
     res.end();
   }
 
-  private async logProxyRequest(
+  private logProxyRequest(
     req: IncomingMessage,
     res: ProxyResponse,
     scenario?: ScenarioDto | null,

@@ -4,7 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
-import appConfig from './app.config';
+import appConfig, { AppConfig } from './app.config';
 import { AppLoggerService } from './common/utils/app-logger.service';
 import { AppFilter } from './common/filters/app.filter';
 
@@ -12,7 +12,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
-  const config = app.get(appConfig.KEY);
+  const config = app.get<AppConfig>(appConfig.KEY);
 
   app.enableCors();
   app.use(express.json({ limit: '10mb' }));
@@ -36,4 +36,8 @@ async function bootstrap() {
     logger.log(`Started listening on ${config.port}`, 'NestApplication');
   });
 }
-bootstrap();
+
+bootstrap().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

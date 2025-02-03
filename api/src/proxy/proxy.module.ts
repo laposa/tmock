@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ProxyService } from './proxy.service';
 import { ProxyController } from './proxy.controller';
 import { TemplateService } from './services/template.service';

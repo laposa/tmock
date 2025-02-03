@@ -31,7 +31,6 @@ export class ScenarioController {
     private readonly proxyService: ProxyService,
   ) {}
 
-
   /**
    * List all available scenarios
    */

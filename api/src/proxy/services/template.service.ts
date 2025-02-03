@@ -13,8 +13,10 @@ export class TemplateService {
     if (template.startsWith('<% TEMPLATE: LiquidJS %>')) {
       try {
         const tpl = template.replace('<% TEMPLATE: LiquidJS %>', '');
-        return await this.engine.parseAndRender(tpl);
+        return (await this.engine.parseAndRender(tpl)) as string;
       } catch (error) {
+        console.error(error);
+
         return template;
       }
     }

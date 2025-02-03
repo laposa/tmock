@@ -8,6 +8,7 @@ import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { AppLoggerService } from '../utils/app-logger.service';
 import { getClientIp } from '../utils/helpers';
+import { Request, Response } from 'express';
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
@@ -46,8 +47,8 @@ export class LoggingInterceptor implements NestInterceptor {
   }
 
   private logRequest(executionStart: number, context: ExecutionContext) {
-    const req = context.switchToHttp().getRequest();
-    const res = context.switchToHttp().getResponse();
+    const req = context.switchToHttp().getRequest<Request>();
+    const res = context.switchToHttp().getResponse<Response>();
     const contextName = `${context.getClass().name} - ${context.getHandler().name}`;
 
     const ip = getClientIp(req);

@@ -1,7 +1,6 @@
 import { Inject } from '@nestjs/common';
 import { ConfigType, registerAs } from '@nestjs/config';
 
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 const appConfig = registerAs('app', () => {
   const upstreamOverrides = process.env.SERVICES_UPSTREAM_OVERRIDES
     ? process.env.SERVICES_UPSTREAM_OVERRIDES.split(',').map((override) => {

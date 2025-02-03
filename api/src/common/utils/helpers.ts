@@ -1,6 +1,7 @@
 import { ClientCondition } from '@/client/client.interfaces';
+import { Request } from 'express';
 import { IncomingMessage } from 'http';
-import * as _ from 'lodash';
+import { get } from 'lodash';
 
 export const evalRequestCondition = (
   values: Record<string, any>,
@@ -8,13 +9,13 @@ export const evalRequestCondition = (
 ) => {
   if (!condition) return true;
 
-  _.get(values, 'request.body');
+  get(values, 'request.body');
   const conditionWithGet = condition.replace(
     /\$([a-zA-Z0-9_.]+)(?=[\s$])?/g,
     (match, p1) => `_.get(values, '${p1}')`,
   );
 
-  return eval(conditionWithGet);
+  return eval(conditionWithGet) as boolean;
 };
 
 export const evalClientConditions = (
@@ -61,11 +62,20 @@ export const evalClientConditions = (
   return true;
 };
 
-export const getClientIp = (req: any) =>
-  req.ip ||
-  req._remoteAddress ||
-  (req.connection && req.connection.remoteAddress) ||
-  undefined;
+export const getClientIp = (req: Request | IncomingMessage) => {
+  const ips =
+    req.headers['cf-connecting-ip'] ||
+    req.headers['x-real-ip'] ||
+    req.headers['x-forwarded-for'] ||
+    req.connection.remoteAddress ||
+    '';
+
+  if (Array.isArray(ips)) {
+    return ips[0].trim();
+  }
+
+  return ips.split(',')[0].trim();
+};
 
 function ipToBinary(ip: string): string {
   return ip

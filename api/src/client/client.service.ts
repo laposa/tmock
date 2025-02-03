@@ -1,23 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ClientsRepository } from '@/common/repositories/clients.repository';
 import { CreateClientDto, PatchClientDto } from './dtos';
 import { isEmptyCondition } from '@/common/utils/helpers';
 
 @Injectable()
 export class ClientService {
-  constructor(
-    private clientsRepository: ClientsRepository,
-  ) {}
+  constructor(private clientsRepository: ClientsRepository) {}
 
   async create(data: CreateClientDto) {
-    const client = await this.clientsRepository.getByName(
-      data.name,
-    );
+    const client = await this.clientsRepository.getByName(data.name);
 
     if (client) {
-      throw new NotFoundException(
-        `Client [${data.name}] already exists.`,
-      );
+      throw new NotFoundException(`Client [${data.name}] already exists.`);
     }
 
     const { id } = (await this.clientsRepository.create(data))[0];
@@ -50,9 +48,7 @@ export class ClientService {
   }
 
   async upsert(data: CreateClientDto) {
-    const client = await this.clientsRepository.getByName(
-      data.name,
-    );
+    const client = await this.clientsRepository.getByName(data.name);
 
     if (client) {
       await this.update(client.id, data);
@@ -90,4 +86,3 @@ export class ClientService {
     return this.clientsRepository.getAll();
   }
 }
-

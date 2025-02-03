@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppDatabase, InjectDb } from '../providers/database.provider';
-import { ServiceDto, ServiceWithScenariosDto } from 'database/schema';
+import { ServiceWithScenariosDto } from 'database/schema';
 
 @Injectable()
 export class ServicesRepository {

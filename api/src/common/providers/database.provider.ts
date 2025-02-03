@@ -10,7 +10,7 @@ export const databaseProvider = {
   provide: DB_PROVIDER_KEY,
   useFactory: (config: AppConfig) => {
     const { host, ssl, user, password, port, databaseName } = config.database;
-    
+
     const pool = new Pool({
       host,
       port,

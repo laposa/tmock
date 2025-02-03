@@ -15,7 +15,13 @@ import { ClientService } from './client.service';
 
 import { ResponseMessage } from '@/common/dtos/ResponseMessage.dto';
 import { ProxyService } from '@/proxy/proxy.service';
-import { ClientDto, ClientUpsertResponse, CreateClientDto, PatchClientDto, ClientResponse } from './dtos';
+import {
+  ClientDto,
+  ClientUpsertResponse,
+  CreateClientDto,
+  PatchClientDto,
+  ClientResponse,
+} from './dtos';
 import { ApiKeyGuard } from '@/common/guards/api-key.guard';
 
 @Controller('api/client')
@@ -66,9 +72,7 @@ export class ClientController {
    */
   @Post('/')
   @UsePipes(ValidationPipe)
-  async create(
-    @Body() body: CreateClientDto,
-  ): Promise<ClientUpsertResponse> {
+  async create(@Body() body: CreateClientDto): Promise<ClientUpsertResponse> {
     const client = await this.service.create(body);
     await this.proxyService.clearClientsCache();
     return { message: 'Client created', client };
@@ -79,9 +83,7 @@ export class ClientController {
    */
   @Put('/')
   @UsePipes(ValidationPipe)
-  async upsert(
-    @Body() body: CreateClientDto,
-  ): Promise<ClientUpsertResponse> {
+  async upsert(@Body() body: CreateClientDto): Promise<ClientUpsertResponse> {
     const { client, updated } = await this.service.upsert(body);
     await this.proxyService.clearClientsCache();
     return { message: `Client ${updated ? 'updated' : 'created'}`, client };

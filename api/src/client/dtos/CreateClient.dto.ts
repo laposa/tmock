@@ -1,5 +1,5 @@
 import {
-	IsArray,
+  IsArray,
   IsBoolean,
   IsObject,
   IsOptional,
@@ -10,7 +10,7 @@ export class CreateClientDto {
   @IsString()
   name: string;
 
-	@IsObject()
+  @IsObject()
   @IsOptional()
   condition?: Record<string, string>;
 
