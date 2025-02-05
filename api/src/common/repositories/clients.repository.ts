@@ -4,6 +4,7 @@ import {
   clients,
   clientsScenarios,
   ClientWithScenariosDto,
+  ClientWithScenarioIdsDto,
 } from 'database/schema';
 import { eq, and, ne, asc } from 'drizzle-orm';
 import { CreateClientDto, PatchClientDto } from '@/client/dtos';
@@ -13,7 +14,25 @@ export class ClientsRepository {
   constructor(@InjectDb() private db: AppDatabase) {}
 
   async getAll() {
-    return this.db.select().from(clients).orderBy(clients.id);
+    return (
+      await this.db.query.clients.findMany({
+        with: {
+          scenarios: {
+            with: {
+              scenario: {
+                columns: { id: true },
+              },
+            },
+          },
+        },
+        orderBy: [asc(clients.id)],
+      })
+    ).map((c) => {
+      return {
+        ...c,
+        scenarios: c.scenarios.map((s) => s.scenario.id),
+      } as ClientWithScenarioIdsDto;
+    });
   }
 
   async disableAll() {

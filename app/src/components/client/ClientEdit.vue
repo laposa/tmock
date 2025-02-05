@@ -18,7 +18,7 @@ async function changeClientName() {
       successMessage: `Client <strong>${props.client.name}</strong> renamed to <strong>${name.value}</strong>`,
     },
     async () => {
-      await clientsApi.setClientName(props.client.id, name.value);
+      await clientsApi.updateName(props.client.id, name.value);
       await clientsStore.load();
     },
   );

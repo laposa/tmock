@@ -111,3 +111,7 @@ export type ServiceWithScenariosDto = ServiceDto & {
 export type ClientWithScenariosDto = ClientDto & {
   scenarios: ScenarioDto[];
 };
+
+export type ClientWithScenarioIdsDto = ClientDto & {
+  scenarios: number[];
+};

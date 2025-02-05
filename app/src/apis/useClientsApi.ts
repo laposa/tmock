@@ -8,7 +8,7 @@ export type Client = {
   scenarios?: number[];
 };
 
-export interface ClientCondition {
+export type ClientCondition = {
   and?: ClientCondition[];
   or?: ClientCondition[];
   not?: boolean;
@@ -16,12 +16,12 @@ export interface ClientCondition {
   headerRegex?: { header: string; value: string };
   ip?: string;
   cidr?: string;
-}
+};
 
 export const useClientsApi = () => {
   const tmockAxios = useTmockAxios();
 
-  const prepareGetClients = () => {
+  const prepareGetList = () => {
     const axios = useAxios<Client[]>('/client', { method: 'GET' }, tmockAxios, {
       immediate: false,
     });
@@ -39,25 +39,25 @@ export const useClientsApi = () => {
     return { ...axios, data, load, reset };
   };
 
-  const setClientEnabled = async (clientId: string, enabled: boolean) => {
+  const updateEnabled = async (clientId: string, enabled: boolean) => {
     await tmockAxios.patch(`/client/${clientId}`, {
       enabled,
     });
   };
 
-  const setClientName = async (clientId: string, name: string) => {
+  const updateName = async (clientId: string, name: string) => {
     await tmockAxios.patch(`/client/${clientId}`, {
       name,
     });
   };
-  
-  const setClientCondition = async (clientId: string, condition: ClientCondition) => {
+
+  const updateCondition = async (clientId: string, condition: ClientCondition) => {
     await tmockAxios.patch(`/client/${clientId}`, {
       condition,
     });
   };
 
-  const addNewClient = async (name: string) => {
+  const create = async (name: string) => {
     await tmockAxios.post(`/client`, {
       name,
       enabled: false,
@@ -65,10 +65,10 @@ export const useClientsApi = () => {
   };
 
   return {
-    prepareGetClients,
-    setClientEnabled,
-    setClientName,
-    addNewClient,
-    setClientCondition,
+    prepareGetList,
+    updateEnabled,
+    updateName,
+    create,
+    updateCondition,
   };
 };

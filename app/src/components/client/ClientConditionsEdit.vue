@@ -21,7 +21,7 @@ async function saveClientCondition() {
       successMessage: `Condition for client <strong>${props.client.name}</strong> updated`,
     },
     async () => {
-      await clientsApi.setClientCondition(props.client.id, condition.value);
+      await clientsApi.updateCondition(props.client.id, condition.value);
       await clientsStore.load();
     },
   );

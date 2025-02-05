@@ -1,22 +1,22 @@
 export const useClientsStore = defineStore('clients', () => {
   const clientsApi = useClientsApi();
 
-  const getClients = clientsApi.prepareGetClients();
+  const getList = clientsApi.prepareGetList();
 
-  const clients = computed(() => getClients.data.value ?? []);
+  const list = computed(() => getList.data.value);
   const detail = ref<Client | null>(null);
 
   async function reset() {
-    getClients.reset();
+    getList.reset();
   }
 
   async function load() {
-    return getClients.load();
+    return getList.load();
   }
 
   async function setDetail(client: Client | null) {
     detail.value = client;
   }
 
-  return { clients, detail, setDetail, reset, load };
+  return { list, detail, setDetail, reset, load };
 });

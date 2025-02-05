@@ -1,12 +1,14 @@
 <script setup lang="ts">
 const uiStore = useUiStore();
 const clientsStore = useClientsStore();
+const scenariosStore = useScenariosStore();
 const clientsApi = useClientsApi();
 const { snackbarWrapper } = useSnackbarWrapper();
 
 clientsStore.load();
+scenariosStore.load();
 
-const clients = computed(() => clientsStore.clients ?? []);
+const clients = computed(() => clientsStore.list ?? []);
 
 function openClientEdit(client: Client) {
   clientsStore.setDetail(client);
@@ -27,11 +29,12 @@ async function toggleEnabled(client: Client, enabled: boolean) {
       successMessage: `Client <strong>${client.name}</strong> ${msg}`,
     },
     async () => {
-      await clientsApi.setClientEnabled(client.id, enabled);
+      await clientsApi.updateEnabled(client.id, enabled);
     },
   );
 
-  await clientsStore.load();
+  clientsStore.load();
+  scenariosStore.load();
 }
 </script>
 

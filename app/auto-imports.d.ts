@@ -77,6 +77,8 @@ declare global {
   const useModel: typeof import('vue')['useModel']
   const useRoute: typeof import('vue-router')['useRoute']
   const useRouter: typeof import('vue-router')['useRouter']
+  const useScenariosApi: typeof import('./src/apis/useScenariosApi')['useScenariosApi']
+  const useScenariosStore: typeof import('./src/stores/scenarios.store')['useScenariosStore']
   const useSlots: typeof import('vue')['useSlots']
   const useSnackbarWrapper: typeof import('./src/composables/useSnackbarWrapper')['useSnackbarWrapper']
   const useSnackbarsStore: typeof import('./src/stores/snackbars.store')['useSnackbarsStore']
@@ -96,6 +98,9 @@ declare global {
   // @ts-ignore
   export type { Client, ClientCondition } from './src/apis/useClientsApi'
   import('./src/apis/useClientsApi')
+  // @ts-ignore
+  export type { Scenario, Service, ScenariosListResponse } from './src/apis/useScenariosApi'
+  import('./src/apis/useScenariosApi')
   // @ts-ignore
   export type { SnackbarCatchErrorOpts } from './src/composables/useSnackbarWrapper'
   import('./src/composables/useSnackbarWrapper')
