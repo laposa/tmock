@@ -118,21 +118,20 @@ export class ProxyService {
     return response;
   }
 
-  private async getScenario(req: IncomingMessage) {
+  private async getScenario(req: IncomingMessage): Promise<{ scenario?: ScenarioDto; client?: ClientWithScenariosDto }> {
     const service = await this.getServiceByReq(req);
     if (!service) {
-      return null;
+      return { scenario: null, client: null };
     }
 
     let clients = await this.getClients();
 
     clients = clients.filter((c) => evalClientConditions(c.condition, req));
     if (!clients || clients.length === 0) {
-      return null;
+      return { scenario: null, client: null };
     }
 
     let matchedClient = clients[0];
-
 
     const scenarioPath = req.url.split('/').slice(3).join('/');
     const scenario = service.scenarios.find((s) => {
