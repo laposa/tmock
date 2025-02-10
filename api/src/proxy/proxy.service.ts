@@ -112,11 +112,13 @@ export class ProxyService {
       }
     }
 
-    this.logProxyRequest(req, res, scenario, client);
+    this.logProxyRequest(req, res, response, scenario, client);
     return response;
   }
 
-  private async getScenario(req: IncomingMessage): Promise<{ scenario?: ScenarioDto; client?: ClientWithScenariosDto }> {
+  private async getScenario(
+    req: IncomingMessage,
+  ): Promise<{ scenario?: ScenarioDto; client?: ClientWithScenariosDto }> {
     const service = await this.getServiceByReq(req);
     if (!service) {
       return { scenario: null, client: null };
@@ -133,7 +135,9 @@ export class ProxyService {
 
     const scenarioPath = req.url.split('/').slice(3).join('/');
     const scenario = service.scenarios.find((s) => {
-      const client = clients.find((c) => c.scenarios.some((sc) => sc.id === s.id));
+      const client = clients.find((c) =>
+        c.scenarios.some((sc) => sc.id === s.id),
+      );
       if (!client) {
         return false;
       }
@@ -184,6 +188,7 @@ export class ProxyService {
   private logProxyRequest(
     req: IncomingMessage,
     res: ProxyResponse,
+    responseBuffer?: Buffer | string,
     scenario?: ScenarioDto,
     client?: ClientWithScenariosDto,
   ) {
@@ -202,6 +207,11 @@ export class ProxyService {
 
     const ms = Date.now() - (res?.startTime || 0);
     message += ` ${ms}ms`;
+
+    // add response size
+    if (responseBuffer) {
+      message += ` ${this.getHumanSize(responseBuffer.length)}`;
+    }
 
     this.logger.log(message);
   }
@@ -227,6 +237,16 @@ export class ProxyService {
     const path = req.url!.split('/')[2];
     const services = await this.getServices();
     return services.find((s) => s.path === path);
+  }
+
+  private getHumanSize(bytes: number) {
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    if (bytes === 0) {
+      return '0B';
+    }
+
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(2)}${sizes[i]}`.replace('.00', '');
   }
 
   async getServices() {
