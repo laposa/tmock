@@ -8,12 +8,8 @@ import {
 } from 'http-proxy-middleware';
 import { ServicesRepository } from '@/common/repositories/services.repository';
 import { AppConfig, InjectConfig } from '@/app.config';
-import {
-  evalClientConditions,
-  evalRequestCondition,
-  getClientIp,
-} from '@/common/utils/helpers';
-import { ScenarioDto, ServiceWithScenariosDto } from 'database/schema';
+import { evalClientConditions, evalRequestCondition, getClientIp } from '@/common/utils/helpers';
+import { ClientWithScenariosDto, ScenarioDto, ServiceWithScenariosDto } from 'database/schema';
 import { AppLoggerService } from '@/common/utils/app-logger.service';
 import { TemplateService } from './services/template.service';
 import { ProxyResponse } from '@/common/utils/interfaces';
@@ -98,7 +94,7 @@ export class ProxyService {
     req: IncomingMessage,
     res: ServerResponse<IncomingMessage>,
   ) {
-    const scenario = await this.getScenario(req);
+    const { scenario, client } = await this.getScenario(req);
     let response: Buffer | string = responseBuffer;
 
     if (scenario) {
@@ -116,30 +112,29 @@ export class ProxyService {
       }
     }
 
-    this.logProxyRequest(req, res, scenario);
+    this.logProxyRequest(req, res, scenario, client);
     return response;
   }
 
-  private async getScenario(req: IncomingMessage) {
+  private async getScenario(req: IncomingMessage): Promise<{ scenario?: ScenarioDto; client?: ClientWithScenariosDto }> {
     const service = await this.getServiceByReq(req);
     if (!service) {
-      return null;
+      return { scenario: null, client: null };
     }
 
-    let clients = await this.clientsRepository.getEnabled();
+    let clients = await this.getClients();
 
     clients = clients.filter((c) => evalClientConditions(c.condition, req));
     if (!clients || clients.length === 0) {
-      return null;
+      return { scenario: null, client: null };
     }
 
-    const clientScenariosIds = clients.flatMap((c) =>
-      c.scenarios.map((s) => s.id),
-    );
+    let matchedClient = clients[0];
 
-    const scenarioPath = req.url!.split('/').slice(3).join('/');
-    return service.scenarios.find((s) => {
-      if (!clientScenariosIds.includes(s.id)) {
+    const scenarioPath = req.url.split('/').slice(3).join('/');
+    const scenario = service.scenarios.find((s) => {
+      const client = clients.find((c) => c.scenarios.some((sc) => sc.id === s.id));
+      if (!client) {
         return false;
       }
 
@@ -161,8 +156,11 @@ export class ProxyService {
         return evalRequestCondition({ request: req }, s.requestCondition);
       }
 
+      matchedClient = client;
       return true;
     });
+
+    return { scenario, client: matchedClient };
   }
 
   private writeResponse(
@@ -186,7 +184,8 @@ export class ProxyService {
   private logProxyRequest(
     req: IncomingMessage,
     res: ProxyResponse,
-    scenario?: ScenarioDto | null,
+    scenario?: ScenarioDto,
+    client?: ClientWithScenariosDto,
   ) {
     const ip = getClientIp(req);
     const url = req.url;
@@ -198,7 +197,7 @@ export class ProxyService {
       if (scenario.responseHeaders) mocked.push('headers');
       if (scenario.responseBody) mocked.push('body');
 
-      message += ` [scenario ${scenario.name}; mocked: ${mocked.join(', ')}]`;
+      message += ` [client ${client!.name}; scenario ${scenario.name}; mocked: ${mocked.join(', ')}]`;
     }
 
     const ms = Date.now() - (res?.startTime || 0);
@@ -251,6 +250,19 @@ export class ProxyService {
 
     await this.cacheManager.set('services', services, 1000 * 60 * 10);
     return services;
+  }
+
+  async getClients() {
+    const cached =
+      await this.cacheManager.get<ClientWithScenariosDto[]>('clients');
+
+    if (cached && !this.config.disableCache) {
+      return cached;
+    }
+
+    const clients = await this.clientsRepository.getEnabled();
+    await this.cacheManager.set('clients', clients, 1000 * 60 * 10);
+    return clients;
   }
 
   async clearServicesCache() {
