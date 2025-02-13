@@ -1,4 +1,4 @@
-export type DialogType = 'client-add' | 'client-edit' | 'client-conditions';
+export type DialogType = 'client-add' | 'client-edit' | 'client-conditions' | 'client-scenarios';
 
 export const useUiStore = defineStore('ui', () => {
   const dialogs = ref<DialogType[]>([]);

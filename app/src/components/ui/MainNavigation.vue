@@ -2,7 +2,8 @@
 
 <template>
   <nav>
-    <RouterLink to="/" class="logo">Testing Mock Proxy</RouterLink>
+    <!-- TODO - play logo animation on loading? -->
+    <RouterLink to="/" class="logo"><TmockLogoSvg></TmockLogoSvg><span>Tmock</span></RouterLink>
     <div class="menu">
       <RouterLink to="/">Clients</RouterLink>
       <RouterLink to="/scenarios">Scenarios</RouterLink>
@@ -21,9 +22,21 @@ nav {
 }
 
 .logo {
-  font-size: 1.5rem;
-  font-weight: bold;
-  text-decoration: none;
+  display: flex;
+  align-items: center;
+}
+
+.logo svg {
+  width: 50px;
+  height: 50px;
+  margin-right: 0.5rem;
+}
+
+.logo span {
+  font-size: 2rem;
+  font-weight: 500;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
 }
 
 .menu {

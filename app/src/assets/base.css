@@ -24,6 +24,7 @@
 /* semantic color variables for this project */
 :root {
   --primary: #596dde;
+  --primary-light: #7c8dea;
 
   --color-background: var(--vt-c-white);
   --color-background-soft: var(--vt-c-white-soft);

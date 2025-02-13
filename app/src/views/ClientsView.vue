@@ -9,11 +9,22 @@ const clientsStore = useClientsStore();
       <ClientAdd></ClientAdd>
     </div>
     <ClientList></ClientList>
-    <ClientEdit v-if="clientsStore.detail" :client="clientsStore.detail"></ClientEdit>
+    <ClientEdit 
+      v-if="clientsStore.detail" 
+      :client="clientsStore.detail">
+    </ClientEdit>
     <ClientConditionsEdit
       v-if="clientsStore.detail"
       :client="clientsStore.detail"
     ></ClientConditionsEdit>
+    <ClientConditionsEdit
+      v-if="clientsStore.detail"
+      :client="clientsStore.detail"
+    ></ClientConditionsEdit>
+    <ClientScenariosEdit
+      v-if="clientsStore.detail"
+      :client="clientsStore.detail"
+    ></ClientScenariosEdit>
   </main>
 </template>
 

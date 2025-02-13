@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { DialogType } from '@/stores/ui.store';
+
 const uiStore = useUiStore();
 const clientsStore = useClientsStore();
 const scenariosStore = useScenariosStore();
@@ -10,14 +12,9 @@ scenariosStore.load();
 
 const clients = computed(() => clientsStore.list ?? []);
 
-function openClientEdit(client: Client) {
+function openEdit(type: DialogType, client: Client) {
   clientsStore.setDetail(client);
-  uiStore.openDialog('client-edit');
-}
-
-function openClientConditionsEdit(client: Client) {
-  clientsStore.setDetail(client);
-  uiStore.openDialog('client-conditions');
+  uiStore.openDialog(type);
 }
 
 async function toggleEnabled(client: Client, enabled: boolean) {
@@ -36,6 +33,24 @@ async function toggleEnabled(client: Client, enabled: boolean) {
   clientsStore.load();
   scenariosStore.load();
 }
+
+async function disableScenario(client: Client, scenarioId: number) {
+  let scenarios = client.scenarios?.flatMap((s) => s.id) ?? [];
+
+  scenarios.splice(scenarios.indexOf(scenarioId), 1);
+
+  await snackbarWrapper(
+    {
+      errorTitle: `Failed to remove scenario from client`,
+      successMessage: `Scenario removed from client`,
+    },
+    async () => {
+      await clientsApi.updateScenarios(client.id, scenarios);
+      await clientsStore.load();
+    },
+  );
+}
+
 </script>
 
 <template>
@@ -61,11 +76,29 @@ async function toggleEnabled(client: Client, enabled: boolean) {
             />
           </td>
           <td>
-            <span class="edit" @click="openClientEdit(client)">{{ client.name }}</span>
+            <span class="edit" @click="openEdit('client-edit', client)">{{ client.name }}</span>
           </td>
-          <td><span class="edit" @click="openClientConditionsEdit(client)">Conditions</span></td>
-          <!-- TODO scenario chips when scenarios are implemented -->
-          <td>{{ client.scenarios }}</td>
+          <td><span class="edit" @click="openEdit('client-conditions', client)">Conditions</span></td>
+          <td>
+            <div class="chips">
+              <!-- TODO: add some sort of default colors and then assign different colors to different services?  -->
+              <v-chip
+                v-for="scenario in client.scenarios"
+                :key="scenario.id"
+                :closable="true"
+                @click:close="disableScenario(client, scenario.id)"
+                ><p><b>{{ scenario.service }}</b> | {{ scenario.name }}</p>
+              </v-chip>
+              <button @click="openEdit('client-scenarios', client)">
+                <v-icon
+                  class="client-scenarios-add"
+                  color="white" 
+                  icon="mdi-plus-circle"
+                >
+                </v-icon>
+              </button>
+            </div>
+          </td>
         </tr>
       </tbody>
     </v-table>
@@ -89,5 +122,26 @@ th:first-of-type {
 
 .edit:hover {
   color: white;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 5px 0;
+  gap: 5px;
+  align-items: center;
+}
+
+.client-scenarios-add {
+
+  &:before {
+    transition: 0.3s ease;
+  }
+
+  &:hover {
+    &:before {
+      color: var(--primary-light);
+    }
+  }
 }
 </style>

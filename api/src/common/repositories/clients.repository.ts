@@ -4,7 +4,6 @@ import {
   clients,
   clientsScenarios,
   ClientWithScenariosDto,
-  ClientWithScenarioIdsDto,
 } from 'database/schema';
 import { eq, and, ne, asc } from 'drizzle-orm';
 import { CreateClientDto, PatchClientDto } from '@/client/dtos';
@@ -19,9 +18,7 @@ export class ClientsRepository {
         with: {
           scenarios: {
             with: {
-              scenario: {
-                columns: { id: true },
-              },
+              scenario: {},
             },
           },
         },
@@ -30,8 +27,8 @@ export class ClientsRepository {
     ).map((c) => {
       return {
         ...c,
-        scenarios: c.scenarios.map((s) => s.scenario.id),
-      } as ClientWithScenarioIdsDto;
+        scenarios: c.scenarios.map((s) => s.scenario),
+      } as ClientWithScenariosDto;
     });
   }
 
@@ -84,7 +81,16 @@ export class ClientsRepository {
   }
 
   async update(id: number, data: PatchClientDto) {
-    const client = await this.db
+    if (data.scenarios) {
+      await this.updateScenarios(id, data.scenarios);
+    }
+
+    let $data = Object.keys(data);
+    if( $data.length === 1 && $data[0] === 'scenarios' ) {
+      return;
+    }
+
+    const $client = this.db
       .update(clients)
       .set(data)
       .where(eq(clients.id, id))
@@ -92,11 +98,7 @@ export class ClientsRepository {
         id: clients.id,
       });
 
-    if (data.scenarios) {
-      await this.updateScenarios(client[0].id, data.scenarios);
-    }
-
-    return client;
+    return $client;
   }
 
   async updateScenarios(id: number, scenarios: number[]) {

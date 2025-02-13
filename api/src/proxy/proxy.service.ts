@@ -121,19 +121,19 @@ export class ProxyService {
   ): Promise<{ scenario?: ScenarioDto; client?: ClientWithScenariosDto }> {
     const service = await this.getServiceByReq(req);
     if (!service) {
-      return { scenario: null, client: null };
+      return { scenario: undefined, client: undefined };
     }
 
     let clients = await this.getClients();
 
     clients = clients.filter((c) => evalClientConditions(c.condition, req));
     if (!clients || clients.length === 0) {
-      return { scenario: null, client: null };
+      return { scenario: undefined, client: undefined };
     }
 
     let matchedClient = clients[0];
 
-    const scenarioPath = req.url.split('/').slice(3).join('/');
+    const scenarioPath = req.url!.split('/').slice(3).join('/');
     const scenario = service.scenarios.find((s) => {
       const client = clients.find((c) =>
         c.scenarios.some((sc) => sc.id === s.id),

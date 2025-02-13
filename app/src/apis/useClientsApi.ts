@@ -5,7 +5,7 @@ export type Client = {
   name: string;
   enabled: boolean;
   condition?: ClientCondition;
-  scenarios?: number[];
+  scenarios?: Scenario[];
 };
 
 export type ClientCondition = {
@@ -57,6 +57,12 @@ export const useClientsApi = () => {
     });
   };
 
+  const updateScenarios = async (clientId: string, scenarios: number[]) => {
+    await tmockAxios.patch(`/client/${clientId}`, {
+      scenarios,
+    });
+  };
+
   const create = async (name: string) => {
     await tmockAxios.post(`/client`, {
       name,
@@ -70,5 +76,6 @@ export const useClientsApi = () => {
     updateName,
     create,
     updateCondition,
+    updateScenarios,
   };
 };
