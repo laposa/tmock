@@ -1,11 +1,12 @@
 import { useAxios } from '@vueuse/integrations/useAxios';
+import { type Scenario } from './useScenariosApi';
 
 export type Client = {
   id: string;
   name: string;
   enabled: boolean;
   condition?: ClientCondition;
-  scenarios?: Scenario[];
+  scenarios?: Omit<Scenario[], 'body'>;
 };
 
 export type ClientCondition = {

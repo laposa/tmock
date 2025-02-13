@@ -8,22 +8,18 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ClientAdd: typeof import('./src/components/client/ClientAdd.vue')['default']
-    ClientCondition: typeof import('./src/components/client/conditions/ClientCondition.vue')['default']
     ClientConditionGroup: typeof import('./src/components/client/conditions/ClientConditionGroup.vue')['default']
     ClientConditionItem: typeof import('./src/components/client/conditions/ClientConditionItem.vue')['default']
     ClientConditionItemInput: typeof import('./src/components/client/conditions/ClientConditionItemInput.vue')['default']
-    ClientConditionRemove: typeof import('./src/components/client/conditions/ClientConditionRemove.vue')['default']
     ClientConditionsEdit: typeof import('./src/components/client/ClientConditionsEdit.vue')['default']
     ClientEdit: typeof import('./src/components/client/ClientEdit.vue')['default']
     ClientList: typeof import('./src/components/client/ClientList.vue')['default']
-    ClientsView: typeof import('./src/views/ClientsView.vue')['default']
-    copy: typeof import('./src/components/client/conditions/ClientConditionGroup.vue')['default']
-    HomeView: typeof import('./src/views/HomeView.vue')['default']
+    ClientScenariosEdit: typeof import('./src/components/client/ClientScenariosEdit.vue')['default']
     MainNavigation: typeof import('./src/components/ui/MainNavigation.vue')['default']
     ModalWindow: typeof import('./src/components/ui/ModalWindow.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
-    ScenariosView: typeof import('./src/views/ScenariosView.vue')['default']
     SnackbarsList: typeof import('./src/components/ui/SnackbarsList.vue')['default']
+    TmockLogoSvg: typeof import('./src/components/ui/TmockLogoSvg.vue')['default']
   }
 }

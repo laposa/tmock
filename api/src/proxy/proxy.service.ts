@@ -8,8 +8,16 @@ import {
 } from 'http-proxy-middleware';
 import { ServicesRepository } from '@/common/repositories/services.repository';
 import { AppConfig, InjectConfig } from '@/app.config';
-import { evalClientConditions, evalRequestCondition, getClientIp } from '@/common/utils/helpers';
-import { ClientWithScenariosDto, ScenarioDto, ServiceWithScenariosDto } from 'database/schema';
+import {
+  evalClientConditions,
+  evalRequestCondition,
+  getClientIp,
+} from '@/common/utils/helpers';
+import {
+  ClientWithScenariosDto,
+  ScenarioDto,
+  ServiceWithScenariosDto,
+} from 'database/schema';
 import { AppLoggerService } from '@/common/utils/app-logger.service';
 import { TemplateService } from './services/template.service';
 import { ProxyResponse } from '@/common/utils/interfaces';
@@ -246,7 +254,10 @@ export class ProxyService {
     }
 
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${(bytes / Math.pow(1024, i)).toFixed(2)}${sizes[i]}`.replace('.00', '');
+    return `${(bytes / Math.pow(1024, i)).toFixed(2)}${sizes[i]}`.replace(
+      '.00',
+      '',
+    );
   }
 
   async getServices() {

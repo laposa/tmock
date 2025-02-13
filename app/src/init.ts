@@ -12,14 +12,14 @@ import { configPlugin } from './plugins/config/config.plugin';
 import type { AppConfig } from './plugins/config/config.interfaces';
 
 export const initTmockApp = (config: AppConfig) => {
-	const app = createApp(App)
-	
-	app.use(createPinia());
-	app.use(router);
-	app.use(configPlugin, config);
-	app.use(createVuetify());
-	
-	router.isReady().then(() => {
+  const app = createApp(App);
+
+  app.use(createPinia());
+  app.use(router);
+  app.use(configPlugin, config);
+  app.use(createVuetify());
+
+  router.isReady().then(() => {
     app.mount('#app');
   });
-}
+};

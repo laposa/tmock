@@ -2,10 +2,11 @@
 const name = ref('');
 
 const clientsStore = useClientsStore();
+const clientsApi = useClientsApi();
 const uiStore = useUiStore();
 
 async function addNewClient() {
-  await clientsStore.addNewClient(name.value);
+  await clientsApi.create(name.value);
   uiStore.closeDialog('client-add');
   clientsStore.load();
   name.value = '';

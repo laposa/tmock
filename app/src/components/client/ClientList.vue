@@ -35,7 +35,7 @@ async function toggleEnabled(client: Client, enabled: boolean) {
 }
 
 async function disableScenario(client: Client, scenarioId: number) {
-  let scenarios = client.scenarios?.flatMap((s) => s.id) ?? [];
+  const scenarios = client.scenarios?.flatMap((s) => s.id) ?? [];
 
   scenarios.splice(scenarios.indexOf(scenarioId), 1);
 
@@ -50,7 +50,6 @@ async function disableScenario(client: Client, scenarioId: number) {
     },
   );
 }
-
 </script>
 
 <template>
@@ -78,7 +77,9 @@ async function disableScenario(client: Client, scenarioId: number) {
           <td>
             <span class="edit" @click="openEdit('client-edit', client)">{{ client.name }}</span>
           </td>
-          <td><span class="edit" @click="openEdit('client-conditions', client)">Conditions</span></td>
+          <td>
+            <span class="edit" @click="openEdit('client-conditions', client)">Conditions</span>
+          </td>
           <td>
             <div class="chips">
               <!-- TODO: add some sort of default colors and then assign different colors to different services?  -->
@@ -87,15 +88,12 @@ async function disableScenario(client: Client, scenarioId: number) {
                 :key="scenario.id"
                 :closable="true"
                 @click:close="disableScenario(client, scenario.id)"
-                ><p><b>{{ scenario.service }}</b> | {{ scenario.name }}</p>
+                ><p>
+                  <b>{{ scenario.service }}</b> | {{ scenario.name }}
+                </p>
               </v-chip>
               <button @click="openEdit('client-scenarios', client)">
-                <v-icon
-                  class="client-scenarios-add"
-                  color="white" 
-                  icon="mdi-plus-circle"
-                >
-                </v-icon>
+                <v-icon class="client-scenarios-add" color="white" icon="mdi-plus-circle"> </v-icon>
               </button>
             </div>
           </td>
@@ -133,7 +131,6 @@ th:first-of-type {
 }
 
 .client-scenarios-add {
-
   &:before {
     transition: 0.3s ease;
   }

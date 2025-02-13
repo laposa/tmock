@@ -85,8 +85,8 @@ export class ClientsRepository {
       await this.updateScenarios(id, data.scenarios);
     }
 
-    let $data = Object.keys(data);
-    if( $data.length === 1 && $data[0] === 'scenarios' ) {
+    const dataKeys = Object.keys(data);
+    if (dataKeys.length === 1 && dataKeys[0] === 'scenarios') {
       return;
     }
 

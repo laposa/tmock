@@ -10,5 +10,5 @@ export const useTmockAxios = () => {
     tmockApi.defaults.headers.common['apikey'] = config.apiKey;
   }
 
-  return tmockApi
+  return tmockApi;
 };
