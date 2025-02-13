@@ -1,0 +1,23 @@
+@import './base.css';
+
+#app {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-weight: normal;
+}
+
+a,
+.green {
+  text-decoration: none;
+  color: var(--primary);
+  transition: 0.3s;
+  padding: 3px;
+}
+
+@media (min-width: 1024px) {
+  body {
+    display: flex;
+  }
+}
