@@ -12,7 +12,7 @@ const appConfig = registerAs('app', () => {
   return {
     env: process.env.NODE_ENV!,
     port: +process.env.PORT! || 3000,
-    apiKey: process.env.API_KEY!,
+    apiKey: process.env.API_KEY || '',
     disableCache: process.env.DISABLE_CACHE === 'true',
     upstreamOverrides,
     servicesApiKey: process.env.SERVICES_API_KEY!,
