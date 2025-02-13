@@ -54,7 +54,20 @@ async function saveClientScenarios() {
                   />
                 </td>
                 <td>
-                  <span>{{ scenario.name }}</span>
+                  <span>
+                    {{ scenario.name }}
+
+                    <button>
+                      <v-icon class="client-scenarios-add" color="black" icon="mdi-information-outline"></v-icon>
+
+                      <v-tooltip
+                        activator="parent"
+                        location="end"
+                      >
+                        <pre>{{ scenario }}</pre>
+                      </v-tooltip>
+                    </button>
+                  </span>
                 </td>
               </tr>
             </tbody>

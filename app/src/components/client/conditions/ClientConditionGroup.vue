@@ -123,8 +123,8 @@ function removeCondition(index: number) {
     <div class="wrapper">
       <v-chip class="parenthesis">)</v-chip>
 
-      <v-chip v-if="!isTopLevel" variant="elevated" class="delete">
-        <v-icon @click="emit('delete')">mdi-close</v-icon>
+      <v-chip v-if="!isTopLevel" variant="elevated" class="delete" @click="emit('delete')">
+        <v-icon>mdi-close</v-icon>
       </v-chip>
     </div>
   </div>

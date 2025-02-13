@@ -106,8 +106,8 @@ const headerValue = computed({
 
     <ClientConditionItemInput v-model="ruleValue"></ClientConditionItemInput>
 
-    <v-chip variant="elevated" class="delete">
-      <v-icon @click="emit('delete')">mdi-close</v-icon>
+    <v-chip variant="elevated" class="delete" @click="emit('delete')">
+      <v-icon>mdi-close</v-icon>
     </v-chip>
   </div>
 </template>
