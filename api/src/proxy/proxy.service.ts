@@ -141,7 +141,7 @@ export class ProxyService {
 
     let matchedClient = clients[0];
 
-    const scenarioPath = req.url!.split('/').slice(3).join('/');
+    const scenarioPath = req.url!.split('/').slice(4).join('/');
     const scenario = service.scenarios.find((s) => {
       const client = clients.find((c) =>
         c.scenarios.some((sc) => sc.id === s.id),
