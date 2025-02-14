@@ -24,7 +24,7 @@ import {
 } from './dtos';
 import { ApiKeyGuard } from '@/common/guards/api-key.guard';
 
-@Controller('api/client')
+@Controller('client')
 @UseGuards(ApiKeyGuard)
 export class ClientController {
   constructor(
