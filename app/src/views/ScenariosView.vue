@@ -1,9 +1,14 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+const scenariosStore = useScenariosStore();
+</script>
 
 <template>
   <main>
-    <v-alert type="info" color="#880000" icon="mdi-alert-circle" border>
-      This page is under construction
-    </v-alert>
+    <h1>Scenarios</h1>
+    <ScenarioList></ScenarioList>
+    <ScenarioEdit 
+      v-if="scenariosStore.detail" 
+      :scenario="scenariosStore.detail">
+    </ScenarioEdit>
   </main>
 </template>

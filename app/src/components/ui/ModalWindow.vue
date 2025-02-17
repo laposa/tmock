@@ -24,5 +24,5 @@ const uiStore = useUiStore();
         <v-btn @click="uiStore.closeDialog(props.id)">Close</v-btn>
       </v-card-actions>
     </v-card>
-  </v-dialog>
+  </v-dialog> 
 </template>

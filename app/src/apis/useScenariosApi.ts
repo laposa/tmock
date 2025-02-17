@@ -48,7 +48,31 @@ export const useScenariosApi = () => {
     return { ...axios, data, load, reset };
   };
 
+  const updateName = async (scenarioId: string, name: string) => {
+    await tmockAxios.patch(`/scenario/${scenarioId}`, {
+      name,
+    });
+  };
+
+  const updateMethod = async (scenarioId: string, requestMethod: string) => {
+    await tmockAxios.patch(`/scenario/${scenarioId}`, {
+      requestMethod,
+    });
+  };
+
+  const updatePath = async (scenarioId: string, requestPath: string) => {
+    await tmockAxios.patch(`/scenario/${scenarioId}`, {
+      requestPath,
+    });
+  };
+
+  const updateCondition = async (scenarioId: string, requestCondition: string) => {
+    await tmockAxios.patch(`/scenario/${scenarioId}`, {
+      requestCondition,
+    });
+  };
+
   return {
-    prepareGetList,
+    prepareGetList, updateName, updateMethod, updatePath, updateCondition
   };
 };

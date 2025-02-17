@@ -15,10 +15,13 @@ declare module 'vue' {
     ClientEdit: typeof import('./src/components/client/ClientEdit.vue')['default']
     ClientList: typeof import('./src/components/client/ClientList.vue')['default']
     ClientScenariosEdit: typeof import('./src/components/client/ClientScenariosEdit.vue')['default']
+    ConfirmationDialog: typeof import('./src/components/ui/ConfirmationDialog.vue')['default']
     MainNavigation: typeof import('./src/components/ui/MainNavigation.vue')['default']
     ModalWindow: typeof import('./src/components/ui/ModalWindow.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ScenarioEdit: typeof import('./src/components/scenario/ScenarioEdit.vue')['default']
+    ScenarioList: typeof import('./src/components/scenario/ScenarioList.vue')['default']
     SnackbarsList: typeof import('./src/components/ui/SnackbarsList.vue')['default']
     TmockLogoSvg: typeof import('./src/components/ui/TmockLogoSvg.vue')['default']
   }

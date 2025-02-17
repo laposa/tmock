@@ -31,7 +31,7 @@
         transform="translate(5.020283-.053456)"
         fill="none"
         stroke="#596dde"
-        stroke-width="5"
+        stroke-width="10"
         stroke-linecap="round"
         stroke-linejoin="round"
       />

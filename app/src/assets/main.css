@@ -21,3 +21,11 @@ a,
     display: flex;
   }
 }
+
+.highlight {
+  color: var(--primary);
+}
+
+.error {
+  color: var(--error);
+}
