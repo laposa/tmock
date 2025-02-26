@@ -71,8 +71,8 @@ export class ProxyService {
     res.startTime = Date.now();
 
     // prepare the request for the upstream service - needs to happen before any async code
-    // remove /proxy/:service-name from the upstream path
-    proxyReq.path = proxyReq.path.replace(/\/proxy\/[^/]+/, '');
+    // remove /api/proxy/:service-name from the upstream path
+    proxyReq.path = proxyReq.path.replace(/\/api\/proxy\/[^/]+/, '');
     if (this.config.servicesApiKey) {
       proxyReq.setHeader('Apikey', this.config.servicesApiKey);
     }
@@ -141,7 +141,7 @@ export class ProxyService {
 
     let matchedClient = clients[0];
 
-    const scenarioPath = req.url!.split('/').slice(3).join('/');
+    const scenarioPath = req.url!.split('/').slice(4).join('/');
     const scenario = service.scenarios.find((s) => {
       const client = clients.find((c) =>
         c.scenarios.some((sc) => sc.id === s.id),
@@ -242,7 +242,7 @@ export class ProxyService {
   }
 
   private async getServiceByReq(req: IncomingMessage) {
-    const path = req.url!.split('/')[2];
+    const path = req.url!.split('/')[3];
     const services = await this.getServices();
     return services.find((s) => s.path === path);
   }

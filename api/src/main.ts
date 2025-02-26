@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import appConfig, { AppConfig } from './app.config';
 import { AppLoggerService } from './common/utils/app-logger.service';
 import { AppFilter } from './common/filters/app.filter';
+import { frontendMiddleware } from './common/middlewares/frontend.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -16,6 +17,8 @@ async function bootstrap() {
   });
   const config = app.get<AppConfig>(appConfig.KEY);
 
+  app.setGlobalPrefix('api');
+  app.use(frontendMiddleware);
   app.enableCors();
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
