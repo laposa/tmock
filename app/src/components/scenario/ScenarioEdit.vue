@@ -11,12 +11,16 @@ const props = defineProps<{
 }>();
 
 const name = ref(props.scenario.name);
-const methodEnabled = ref(props.scenario.requestMethod && props.scenario.requestMethod !== '');
-const method = ref(props.scenario.requestMethod);
-const pathEnabled = ref(props.scenario.requestPath && props.scenario.requestPath !== '');
-const path = ref(props.scenario.requestPath);
-const conditionEnabled = ref(props.scenario.requestCondition && props.scenario.requestCondition !== '');
-const condition = ref(props.scenario.requestCondition);
+const requestMethodEnabled = ref(props.scenario.requestMethod && props.scenario.requestMethod !== '');
+const requestMethod = ref(props.scenario.requestMethod);
+const requestPathEnabled = ref(props.scenario.requestPath && props.scenario.requestPath !== '');
+const requestPath = ref(props.scenario.requestPath);
+const requestConditionEnabled = ref(props.scenario.requestCondition && props.scenario.requestCondition !== '');
+const requestCondition = ref(props.scenario.requestCondition);
+const responseCodeEnabled = ref(props.scenario.responseCode ? true : false);
+const responseCode = ref(props.scenario.responseCode);
+const responseHeadersEnabled = ref(props.scenario.responseHeaders ? true : false);
+const responseHeaders = ref(props.scenario.responseHeaders);
 
 const confirmValue = ref('');
 const confirmValueString = ref('');
@@ -35,64 +39,111 @@ async function changeScenarioName() {
   );
 }
 
-async function changeScenarioMethodEnabled() {
-  if(!methodEnabled.value && method.value !== '') {
+async function changeRequestMethodEnabled() {
+  if(!requestMethodEnabled.value && requestMethod.value !== '') {
     confirmValue.value = 'requestMethod';
     confirmValueString.value = 'Request Method';
     uiStore.openDialog('confirmation-dialog');
   }
 }
 
-async function changeScenarioMethod() {
+async function changeRequestMethod() {
   snackbarWrapper(
     {
       errorTitle: `Failed to change request method of scenario ${props.scenario.name}`,
-      successMessage: `Scenario <strong>${props.scenario.name}</strong> request method changed to <strong>${method.value}</strong>`,
+      successMessage: `Scenario <strong>${props.scenario.name}</strong> request method changed to <strong>${requestMethod.value}</strong>`,
     }, 
     async () => {
-      await scenariosApi.updateMethod(props.scenario.id.toString(), method.value ?? '');
+      await scenariosApi.updateRequestMethod(props.scenario.id.toString(), requestMethod.value ?? '');
       await scenariosStore.load();
     },
   );
 }
 
-async function changeScenarioPathEnabled() {
-  if(!pathEnabled.value && path.value !== '') {
+async function changeRequestPathEnabled() {
+  if(!requestPathEnabled.value && requestPath.value !== '') {
     confirmValue.value = 'requestPath';
     confirmValueString.value = 'Request Path';
     uiStore.openDialog('confirmation-dialog');
   }
 }
 
-async function changeScenarioPath() {
+async function changeRequestPath() {
   snackbarWrapper(
     {
       errorTitle: `Failed to change request path of scenario ${props.scenario.name}`,
-      successMessage: `Scenario <strong>${props.scenario.name}</strong> request path changed to <strong>${path.value}</strong>`,
+      successMessage: `Scenario <strong>${props.scenario.name}</strong> request path changed to <strong>${requestPath.value}</strong>`,
     }, 
     async () => {
-      await scenariosApi.updatePath(props.scenario.id.toString(), path.value ?? '');
+      await scenariosApi.updateRequestPath(props.scenario.id.toString(), requestPath.value ?? '');
       await scenariosStore.load();
     },
   );
 }
 
-async function changeScenarioConditionEnabled() {
-  if(!conditionEnabled.value && condition.value !== '') {
+async function changeRequestConditionEnabled() {
+  if(!requestConditionEnabled.value && requestCondition.value !== '') {
     confirmValue.value = 'requestCondition';
     confirmValueString.value = 'Request Condition';
     uiStore.openDialog('confirmation-dialog');
   }
 }
 
-async function changeScenarioCondition() {
+async function changeRequestCondition() {
   snackbarWrapper(
     {
       errorTitle: `Failed to change request condition of scenario ${props.scenario.name}`,
-      successMessage: `Scenario <strong>${props.scenario.name}</strong> request condition changed to <strong>${condition.value}</strong>`,
+      successMessage: `Scenario <strong>${props.scenario.name}</strong> request condition changed to <strong>${requestCondition.value}</strong>`,
     }, 
     async () => {
-      await scenariosApi.updateCondition(props.scenario.id.toString(), condition.value ?? '');
+      await scenariosApi.updateRequestCondition(props.scenario.id.toString(), requestCondition.value ?? '');
+      await scenariosStore.load();
+    },
+  );
+}
+
+async function changeResponseCodeEnabled() {
+  if(!responseCodeEnabled.value && responseCode.value !== null) {
+    confirmValue.value = 'responseCode';
+    confirmValueString.value = 'Response Code';
+    uiStore.openDialog('confirmation-dialog');
+  }
+}
+
+async function changeResponseCode() {
+  snackbarWrapper(
+    {
+      errorTitle: `Failed to change response code of scenario ${props.scenario.name}`,
+      successMessage: `Scenario <strong>${props.scenario.name}</strong> response code changed to <strong>${responseCode.value}</strong>`,
+    }, 
+    async () => {
+      await scenariosApi.updateResponseCode(props.scenario.id.toString(), responseCode.value ?? null);
+      await scenariosStore.load();
+    },
+  );
+}
+
+async function changeResponseHeadersEnabled() {
+  if(!responseHeadersEnabled.value && responseHeaders.value !== null) {
+    confirmValue.value = 'responseHeaders';
+    confirmValueString.value = 'Response Headers';
+    uiStore.openDialog('confirmation-dialog');
+  }
+}
+
+async function changeResponseHeaders(newHeaders: Record<string, string>) {
+  if(Object.keys(newHeaders ?? {}).length === 0) {
+    responseHeaders.value = null;
+  } else {
+    responseHeaders.value = newHeaders;
+  }
+  snackbarWrapper(
+    {
+      errorTitle: `Failed to change response headers of scenario ${props.scenario.name}`,
+      successMessage: `Scenario <strong>${props.scenario.name}</strong> response headers to <strong>${responseHeaders.value}</strong>`,
+    }, 
+    async () => {
+      await scenariosApi.updateResponseHeaders(props.scenario.id.toString(), responseHeaders.value);
       await scenariosStore.load();
     },
   );
@@ -102,16 +153,24 @@ async function confirmDelete() {
   
   switch(confirmValue.value) {
     case 'requestMethod':
-      method.value = '';
-      changeScenarioMethod();
+      requestMethod.value = '';
+      changeRequestMethod();
       break;
     case 'requestPath':
-      path.value = '';
-      changeScenarioPath();
+      requestPath.value = '';
+      changeRequestPath();
       break;
     case 'requestCondition':
-      condition.value = '';
-      changeScenarioCondition();
+      requestCondition.value = '';
+      changeRequestCondition();
+      break;
+    case 'responseCode':
+      responseCode.value = null;
+      changeResponseCode();
+      break;
+    case 'responseHeaders':
+      responseHeaders.value = null;
+      changeResponseHeaders({});
       break;
     default:
       return;
@@ -124,13 +183,19 @@ async function cancelDelete() {
   
   switch(confirmValue.value) {
     case 'requestMethod':
-      methodEnabled.value = true;
+      requestMethodEnabled.value = true;
       break;
     case 'requestPath':
-      pathEnabled.value = true;
+      requestPathEnabled.value = true;
       break;
     case 'requestCondition':
-      conditionEnabled.value = true;
+      requestConditionEnabled.value = true;
+      break;
+    case 'responseCode':
+      responseCodeEnabled.value = true;
+      break;
+    case 'responseHeaders':
+      responseHeadersEnabled.value = true;
       break;
     default:
       return;
@@ -148,62 +213,102 @@ async function cancelDelete() {
     <span class="label">Request Conditions</span>
     <div class="row">
       <v-switch 
-        :loading="confirmValue === 'requestMethod'"
-        v-model="methodEnabled"
+        v-model="requestMethodEnabled"
         color="indigo"
+        :loading="confirmValue === 'requestMethod'"
         :hide-details="true" 
-        @update:model-value="changeScenarioMethodEnabled()">
+        @update:model-value="changeRequestMethodEnabled()">
       </v-switch>
       
       <v-select 
         label="Request Method" 
-        v-if="methodEnabled"
-        v-model="method" 
+        v-if="requestMethodEnabled"
+        v-model="requestMethod" 
         :items="['GET', 'POST', 'PUT', 'DELETE']"
         :hide-details="true"
-        @update:model-value="changeScenarioMethod()">
+        @update:model-value="changeRequestMethod()">
       </v-select>
       <div class="fake-label" v-else>Request Method</div>
     </div>
 
     <div class="row">
       <v-switch 
-        :loading="confirmValue === 'requestPath'"
-        v-model="pathEnabled"
+        v-model="requestPathEnabled"
         color="indigo"
+        :loading="confirmValue === 'requestPath'"
         :hide-details="true" 
-        @update:model-value="changeScenarioPathEnabled()">
+        @update:model-value="changeRequestPathEnabled()">
       </v-switch>
       
       <v-text-field
         label="Request Path" 
-        v-if="pathEnabled" 
-        v-model="path" 
-        @change="changeScenarioPath()" 
-        :hide-details="true">
+        v-if="requestPathEnabled" 
+        v-model="requestPath" 
+        :hide-details="true"
+        @change="changeRequestPath()">
       </v-text-field>
       <div class="fake-label" v-else>Request Path</div>
     </div>
 
     <div class="row">
       <v-switch 
-        :loading="confirmValue === 'requestCondition'"
-        v-model="conditionEnabled"
+        v-model="requestConditionEnabled"
         color="indigo"
+        :loading="confirmValue === 'requestCondition'"
         :hide-details="true" 
-        @update:model-value="changeScenarioConditionEnabled()">
+        @update:model-value="changeRequestConditionEnabled()">
       </v-switch>
       
       <v-text-field
         label="Request Condition" 
-        v-if="conditionEnabled" 
-        v-model="condition" 
-        @change="changeScenarioCondition()" 
-        :hide-details="true">
+        v-if="requestConditionEnabled" 
+        v-model="requestCondition" 
+        :hide-details="true"
+        @change="changeRequestCondition()">
       </v-text-field>
       <div class="fake-label" v-else>Request Condition</div>
     </div>
+
+    <span class="label">Response Modifications</span>
+    <div class="row">
+      <v-switch 
+        :loading="confirmValue === 'responseCode'"
+        v-model="responseCodeEnabled"
+        color="indigo"
+        :hide-details="true" 
+        @update:model-value="changeResponseCodeEnabled()">
+      </v-switch>
+      
+      <v-text-field
+        label="Response Code" 
+        v-if="responseCodeEnabled"
+        v-model.number="responseCode" 
+        :hide-details="true"
+        type="number"
+        @change="changeResponseCode()">
+      </v-text-field>
+      <div class="fake-label" v-else>Response Code</div>
+    </div>
     
+    <div class="row">
+      <v-switch 
+        :loading="confirmValue === 'responseHeaders'"
+        v-model="responseHeadersEnabled"
+        color="indigo"
+        :hide-details="true" 
+        @update:model-value="changeResponseHeadersEnabled()">
+      </v-switch>
+      
+      <div class="fake-label">
+        Response Headers
+      </div>
+    </div>
+
+    <ResponseHeadersEdit 
+      v-if="responseHeadersEnabled" 
+      :headers="responseHeaders"
+      @update="(newHeaders) => changeResponseHeaders(newHeaders)">
+    </ResponseHeadersEdit>
 
     <!-- 
     <template v-slot:actions>
@@ -214,7 +319,7 @@ async function cancelDelete() {
     <ConfirmationDialog 
       @confirm="confirmDelete()"
       @discard="cancelDelete()">
-      Are you sure you want to remove current <span class="highlight">{{ confirmValueString }}</span> value?
+        Are you sure you want to remove current <span class="highlight">{{ confirmValueString }}</span> value?
     </ConfirmationDialog>
   </ModalWindow>
 </template>

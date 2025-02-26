@@ -18,6 +18,8 @@ declare module 'vue' {
     ConfirmationDialog: typeof import('./src/components/ui/ConfirmationDialog.vue')['default']
     MainNavigation: typeof import('./src/components/ui/MainNavigation.vue')['default']
     ModalWindow: typeof import('./src/components/ui/ModalWindow.vue')['default']
+    ResponseHeaderItem: typeof import('./src/components/scenario/headers/ResponseHeaderItem.vue')['default']
+    ResponseHeadersEdit: typeof import('./src/components/scenario/headers/ResponseHeadersEdit.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     ScenarioEdit: typeof import('./src/components/scenario/ScenarioEdit.vue')['default']

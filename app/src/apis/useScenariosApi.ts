@@ -54,25 +54,37 @@ export const useScenariosApi = () => {
     });
   };
 
-  const updateMethod = async (scenarioId: string, requestMethod: string) => {
+  const updateRequestMethod = async (scenarioId: string, requestMethod: string) => {
     await tmockAxios.patch(`/scenario/${scenarioId}`, {
       requestMethod,
     });
   };
 
-  const updatePath = async (scenarioId: string, requestPath: string) => {
+  const updateRequestPath = async (scenarioId: string, requestPath: string) => {
     await tmockAxios.patch(`/scenario/${scenarioId}`, {
       requestPath,
     });
   };
 
-  const updateCondition = async (scenarioId: string, requestCondition: string) => {
+  const updateRequestCondition = async (scenarioId: string, requestCondition: string) => {
     await tmockAxios.patch(`/scenario/${scenarioId}`, {
       requestCondition,
     });
   };
 
+  const updateResponseCode = async (scenarioId: string, responseCode: number | null) => {
+    await tmockAxios.patch(`/scenario/${scenarioId}`, {
+      responseCode,
+    });
+  };
+
+  const updateResponseHeaders = async (scenarioId: string, responseHeaders: Record<string, string> | null) => {
+    await tmockAxios.patch(`/scenario/${scenarioId}`, {
+      responseHeaders,
+    });
+  };
+
   return {
-    prepareGetList, updateName, updateMethod, updatePath, updateCondition
+    prepareGetList, updateName, updateRequestMethod, updateRequestPath, updateRequestCondition, updateResponseCode, updateResponseHeaders
   };
 };

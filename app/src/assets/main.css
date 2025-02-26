@@ -29,3 +29,8 @@ a,
 .error {
   color: var(--error);
 }
+
+.row {
+  display: flex;
+  gap: 20px;
+}
