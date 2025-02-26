@@ -19,11 +19,16 @@ const requestConditionEnabled = ref(props.scenario.requestCondition && props.sce
 const requestCondition = ref(props.scenario.requestCondition);
 const responseCodeEnabled = ref(props.scenario.responseCode ? true : false);
 const responseCode = ref(props.scenario.responseCode);
-const responseHeadersEnabled = ref(props.scenario.responseHeaders ? true : false);
+
 const responseHeaders = ref(props.scenario.responseHeaders);
+const responseHeadersEnabled = computed(() => responseHeaders.value !== null);
 
 const confirmValue = ref('');
 const confirmValueString = ref('');
+
+function toggleResponseHeaders() {
+  responseHeaders.value = responseHeaders.value ? null : {};
+}
 
 // TODO error/success dictionary? would save a lot of code
 async function changeScenarioName() {
@@ -123,14 +128,6 @@ async function changeResponseCode() {
   );
 }
 
-async function changeResponseHeadersEnabled() {
-  if(!responseHeadersEnabled.value && responseHeaders.value !== null) {
-    confirmValue.value = 'responseHeaders';
-    confirmValueString.value = 'Response Headers';
-    uiStore.openDialog('confirmation-dialog');
-  }
-}
-
 async function changeResponseHeaders(newHeaders: Record<string, string>) {
   if(Object.keys(newHeaders ?? {}).length === 0) {
     responseHeaders.value = null;
@@ -194,9 +191,6 @@ async function cancelDelete() {
     case 'responseCode':
       responseCodeEnabled.value = true;
       break;
-    case 'responseHeaders':
-      responseHeadersEnabled.value = true;
-      break;
     default:
       return;
   }
@@ -224,7 +218,7 @@ async function cancelDelete() {
         label="Request Method" 
         v-if="requestMethodEnabled"
         v-model="requestMethod" 
-        :items="['GET', 'POST', 'PUT', 'DELETE']"
+        :items="['GET', 'POST', 'PUT', 'PATCH', 'DELETE']"
         :hide-details="true"
         @update:model-value="changeRequestMethod()">
       </v-select>
@@ -293,11 +287,10 @@ async function cancelDelete() {
     <div class="row">
       <v-switch 
         :loading="confirmValue === 'responseHeaders'"
-        v-model="responseHeadersEnabled"
+        :model-value="responseHeadersEnabled"
+        @update:model-value="toggleResponseHeaders"
         color="indigo"
-        :hide-details="true" 
-        @update:model-value="changeResponseHeadersEnabled()">
-      </v-switch>
+        :hide-details="true" /> 
       
       <div class="fake-label">
         Response Headers
@@ -305,11 +298,10 @@ async function cancelDelete() {
     </div>
 
     <ResponseHeadersEdit 
-      v-if="responseHeadersEnabled" 
-      :headers="responseHeaders"
-      @update="(newHeaders) => changeResponseHeaders(newHeaders)">
-    </ResponseHeadersEdit>
-
+      v-if="responseHeadersEnabled && responseHeaders !== null" 
+      v-model="responseHeaders"
+    />
+    
     <!-- 
     <template v-slot:actions>
       TODO: prompt to confirm delete

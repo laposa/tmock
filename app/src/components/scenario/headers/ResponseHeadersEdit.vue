@@ -1,50 +1,50 @@
 <script setup lang="ts">
 import type { ResponseHeaderItem } from './ResponseHeaderItem.vue';
 
+export type ResponseHeaders = Record<string, string>;
+
 const emit = defineEmits<{
-  'update': [Record<string, string>],
-}>();
+	'update:model-value': [ResponseHeaders],
+}>();	
 
-const props = defineProps<{
-  headers: Record<string, string> | null,
-}>();
+const headers = defineModel<ResponseHeaders>({ required: true });
 
-let headersArr = props.headers ? Object.entries(props.headers).map(([header, value]) => ({ header, value })) : [];
+function updateHeader(headerToUpdate: string, { header, value }: ResponseHeaderItem) {
+	const newHeaders = { ...headers.value };
 
-function update() {
-	emit('update', arrayToRecord(headersArr));
+	if (headerToUpdate !== header) {
+		delete newHeaders[headerToUpdate];
+	}
+
+	console.log({ header, value });
+
+	emit('update:model-value', { ...newHeaders, [header]: value });
 }
 
-function arrayToRecord(array: ResponseHeaderItem[]): Record<string, string> {
-  return array.reduce((acc, { header, value }) => {
-    acc[header] = value;
-    return acc;
-  }, {} as Record<string, string>);
+function removeHeader(header: string) {
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const { [header]: _, ...rest } = headers.value;
+	emit('update:model-value', rest);
 }
 
-function deleteResponseHeader(header: ResponseHeaderItem) {
-	headersArr = headersArr.filter((item) => item.header !== header.header);
+function addHeader() {
+	emit('update:model-value', { ...headers.value, '': '' });
 }
-
 </script>
 
 <template>
 	<div class="headers">
-		<div class="row" v-for="header in headersArr" :key="header.value">
+		<div class="row" v-for="([header, value], index) in Object.entries(headers)" :key="index">
 			<ResponseHeaderItem 
-				:header="header"
-				@delete="deleteResponseHeader(header)"
+				:model-value="{ header, value }"
+				@update:model-value="(val) => updateHeader(header, val)"
+				@delete="removeHeader(header)"
 			/>
 		</div>
 		<v-btn 
 			prepend-icon="mdi-plus"
-			@click="headersArr.push({ header: '', value: '' })"> 
+			@click="addHeader"> 
 			Add header
-		</v-btn>
-		<v-btn 
-			prepend-icon="mdi-check"
-			@click="update()">
-			Save
 		</v-btn>
 	</div>
 </template>

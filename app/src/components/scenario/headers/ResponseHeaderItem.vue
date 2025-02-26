@@ -1,7 +1,8 @@
 <script setup lang="ts">
 
 const emit = defineEmits<{
-  'delete': [ResponseHeaderItem];
+	'delete': [];
+	'update:model-value': [ResponseHeaderItem];
 }>();
 
 export type ResponseHeaderItem = {
@@ -9,24 +10,25 @@ export type ResponseHeaderItem = {
 	value: string,
 };
 
-const props = defineProps<{
-	header: ResponseHeaderItem,
-}>();
+const header = defineModel<ResponseHeaderItem>({ required: true });
 
-const header = ref(props.header);
-
+function updateHeader(header: string, value: string) {
+	emit('update:model-value', { header, value });
+}
 </script>
 
 <template>
 	<div class="item">
 		<v-text-field 
-			v-model="header.header" 
+			:model-value="header.header"
+			@update:model-value="(val) => updateHeader(val, header.value)"
 			density="compact"
 			:hide-details="true">
 		</v-text-field>: 
 		
 		<v-text-field 
-			v-model="header.value" 
+			:model-value="header.value"
+			@update:model-value="(val) => updateHeader(header.header, val)"
 			density="compact"
 			:hide-details="true">
 		</v-text-field>
@@ -35,7 +37,7 @@ const header = ref(props.header);
 			icon="mdi-close" 
 			size="x-small"
 			color="red"
-			@click="emit('delete', header)">
+			@click="emit('delete')">
 		</v-btn>
 	</div>
 </template>
