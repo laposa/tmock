@@ -20,7 +20,10 @@ async function addNewClient() {
     <ModalWindow id="client-add" title="Add new client">
       <v-text-field label="Name" v-model="name"></v-text-field>
 
-      <v-btn color="indigo" @click="addNewClient()">Create</v-btn>
+      <template v-slot:actions>
+        <v-btn @click="addNewClient()" color="indigo">Create</v-btn>
+        <v-btn @click="uiStore.closeDialog('client-add')">Close</v-btn>
+      </template>
     </ModalWindow>
   </div>
 </template>

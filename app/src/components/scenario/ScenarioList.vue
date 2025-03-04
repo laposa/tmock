@@ -22,9 +22,16 @@ const headers = [
   { title: 'Body', key: 'responseBody' },
 ];
 
-function openScenarioEdit(type: DialogType, scenario: Scenario) {
+async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: string) {
   scenariosStore.setDetail(scenario);
-  uiStore.openDialog(type);
+  await uiStore.openDialog(type);
+
+  if (target) {
+    const element = document.querySelector(target);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
 }
 
 </script>
@@ -61,14 +68,23 @@ function openScenarioEdit(type: DialogType, scenario: Scenario) {
           <td></td>
           <td 
             class="scenario-name"
-            @click="openScenarioEdit('scenario-edit', item)">{{ item.name }}
+            @click="openScenarioEdit('scenario-edit', item)">
+            {{ item.name }}
           </td>
           <td>{{ item.requestMethod }}</td>
           <td>{{ item.requestPath }}</td>
           <td>{{ item.requestCondition }}</td>
           <td>{{ item.responseCode }}</td>
-          <td>{{ item.responseHeaders }}</td>
-          <td>{{ item.responseBody }}</td>
+          <td 
+            class="scenario-name"
+            @click="openScenarioEdit('scenario-edit', item, '#responseHeaders')">
+            {{ item.responseHeaders ? 'Show headers' : '' }}
+          </td>
+          <td 
+            class="scenario-name"
+            @click="openScenarioEdit('scenario-edit', item, '#responseBody')">
+            {{ item.responseBody ? 'Show body' : '' }}
+          </td>
         </tr>
       </template>
     </v-data-table>

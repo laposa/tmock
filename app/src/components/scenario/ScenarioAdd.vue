@@ -1,57 +1,52 @@
 <script setup lang="ts">
-import type { Scenario } from '@/apis/useScenariosApi';
 import type { ResponseHeaderItem } from './headers/ResponseHeaderItem.vue';
-import { isEqual } from 'lodash';
 
-const scenariosStore = useScenariosStore();
 const uiStore = useUiStore();
+const scenariosStore = useScenariosStore();
 const scenariosApi = useScenariosApi();
-
 const { snackbarWrapper } = useSnackbarWrapper();
 
-const props = defineProps<{
-  scenario: Scenario;
-}>();
+const name = ref('');
+const service = ref('');
+const requestMethod: Ref<string | null> = ref(null);
+const requestPath: Ref<string | null> = ref(null);
+const requestCondition: Ref<string | null> = ref(null);
+const responseCode: Ref<number | null> = ref(null);
+const responseHeaders: Ref<ResponseHeaderItem[] | null> = ref(null);
 
-const name = ref(props.scenario.name);
-const service = ref(props.scenario.service);
-const requestMethod = ref(props.scenario.requestMethod);
-const requestPath = ref(props.scenario.requestPath);
-const requestCondition = ref(props.scenario.requestCondition);
-const responseCode = ref(props.scenario.responseCode);
-const responseHeaders = ref(props.scenario.responseHeaders);
-const confirmMessage = ref('');
-const confirmAction = ref('');
-
-const responseHeadersArray = ref(Object.entries(responseHeaders.value ?? {}).map(([header, value]) => ({ header, value })));
-
-function arrayToRecord(array: ResponseHeaderItem[]): Record<string, string> | null {
-  if(array.length === 0) return null;
-
+function arrayToRecord(array: ResponseHeaderItem[]): Record<string, string> {
   return array.reduce((acc, { header, value }) => {
     acc[header] = value;
     return acc;
   }, {} as Record<string, string>);
 }
 
-async function saveScenario() {
+async function createScenario() {
   snackbarWrapper(
     {
-      errorTitle: `Failed to save changes to scenario ${props.scenario.name}`,
-      successMessage: `Scenario <strong>${props.scenario.name}</strong> has been successfully updated`,
+      errorTitle: `Failed to save changes to add new scenario`,
+      successMessage: `Scenario <strong>${name.value}</strong> has been successfully created`,
     }, 
     async () => {
-      await scenariosApi.updateScenario(props.scenario.id.toString(), {
-        ...props.scenario,
+      await scenariosApi.create({
         name: name.value,
         service: service.value ?? null,
         requestMethod: requestMethod.value ?? null,
         requestPath: requestPath.value ?? null,
         requestCondition: requestCondition.value ?? null,
         responseCode: responseCode.value ?? null,
-        responseHeaders: responseHeadersArray.value.length > 0 ? arrayToRecord(responseHeadersArray.value) : null,
+        responseHeaders: responseHeaders.value && responseHeaders.value.length > 0 ? arrayToRecord(responseHeaders.value) : null,
+        responseBody: null,
       });
       await scenariosStore.load();
+
+      name.value = '';
+      service.value = '';
+      requestMethod.value = null;
+      requestPath.value = null;
+      requestCondition.value = null;
+      responseCode.value = null;
+      responseHeaders.value = null;
     },
   );
 }
@@ -72,81 +67,22 @@ async function toggleValue(value: string) {
       responseCode.value = responseCode.value === null ? 0 : null;
       break;
     case 'responseHeaders':
-      responseHeaders.value = responseHeaders.value === null ? { header: '', value: '' } : null;
-      responseHeadersArray.value = responseHeadersArray.value && responseHeadersArray.value.length > 0 ? [] : [{ header: '', value: '' }];
+      responseHeaders.value = responseHeaders.value === null ? [{ header: '', value: '' }] : null;
       break;
     default:
       return;
-  }
-}
-
-async function confirm() {
-  switch(confirmAction.value) {
-    case 'close':
-      uiStore.closeDialog('confirmation-dialog');
-      uiStore.closeDialog('scenario-edit');
-      break;
-    case 'delete':
-      uiStore.closeDialog('confirmation-dialog');
-      snackbarWrapper(
-        {
-          errorTitle: `Failed to save changes to scenario ${props.scenario.name}`,
-          successMessage: `Scenario <strong>${props.scenario.name}</strong> has been successfully deleted.`,
-        },
-        async () => {
-          await scenariosStore.deleteScenario(props.scenario.id.toString());
-          await uiStore.closeDialog('scenario-edit');
-          await scenariosStore.load();
-        },
-      );
-      break;
-    default:
-      return;
-  }
-}
-
-function cancel() {
-  confirmAction.value = '';
-  confirmMessage.value = '';
-  uiStore.closeDialog('confirmation-dialog');
-}
-
-function deleteScenario() {
-  confirmAction.value = 'delete';
-  confirmMessage.value = 'Are you sure you want to delete this scenario?';
-  uiStore.openDialog('confirmation-dialog');
-}
-
-function closeDialog() {
-  const newScenario = {
-    ...props.scenario,
-    name: name.value,
-    service: service.value,
-    requestMethod: requestMethod.value,
-    requestPath: requestPath.value,
-    requestCondition: requestCondition.value,
-    responseCode: responseCode.value,
-    responseHeaders: arrayToRecord(responseHeadersArray.value),
-  } as Scenario;
-
-  console.log(newScenario, props.scenario);
-
-  if(!isEqual(newScenario, props.scenario)) {
-    confirmAction.value = 'close';
-    confirmMessage.value = 'You will lose unsaved changes. Are you sure you want to close?';
-    uiStore.openDialog('confirmation-dialog');
-  } else {
-    uiStore.closeDialog('scenario-edit');
   }
 }
 </script>
 
 <template>
-  <ModalWindow id="scenario-edit" title="Edit Scenario" :persistent="true">
+  <v-btn @click="uiStore.openDialog('scenario-add')" color="indigo">Add scenario</v-btn>
 
-    <v-text-field v-model="name" label="Name"></v-text-field>
+  <ModalWindow id="scenario-add" title="Add Scenario">
+    
+    <v-text-field v-model="name" label="Name" required></v-text-field>
     <v-select v-model="service" label="Service" :items="scenariosStore.list.map((s) => s.path)"></v-select>
-
+    
     <span class="label">Request Conditions</span>
     <div class="row">
       <v-switch 
@@ -221,7 +157,7 @@ function closeDialog() {
     
     <div class="row" id="responseHeaders">
       <v-switch 
-        :model-value="responseHeadersArray.length !== 0"
+        :model-value="responseHeaders && responseHeaders.length !== 0"
         @update:model-value="toggleValue('responseHeaders')"
         color="indigo"
         :hide-details="true" /> 
@@ -231,8 +167,8 @@ function closeDialog() {
     </div>
 
     <ResponseHeadersEdit
-      v-if="responseHeadersArray.length !== 0"
-      v-model="responseHeadersArray"
+      v-if="responseHeaders && responseHeaders.length !== 0"
+      v-model="responseHeaders"
     ></ResponseHeadersEdit>
 
     <div class="row" id="responseBody">
@@ -240,17 +176,9 @@ function closeDialog() {
     </div>
 
     <template v-slot:actions>
-      <v-btn @click="deleteScenario()" color="red">Delete</v-btn>
-      <v-spacer></v-spacer>
-      <v-btn @click="saveScenario()" color="indigo">Save</v-btn>
-      <v-btn @click="closeDialog()">Close</v-btn>
+      <v-btn @click="createScenario()" color="indigo">Create</v-btn>
+      <v-btn @click="uiStore.closeDialog('scenario-add')">Close</v-btn>
     </template>
-
-    <ConfirmationDialog 
-      @confirm="confirm()"
-      @discard="cancel()">
-        {{ confirmMessage }}
-    </ConfirmationDialog>
   </ModalWindow>
 </template>
 

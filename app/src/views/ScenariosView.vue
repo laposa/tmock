@@ -4,7 +4,10 @@ const scenariosStore = useScenariosStore();
 
 <template>
   <main>
-    <h1>Scenarios</h1>
+    <div class="heading">
+      <h1>Scenarios</h1>
+      <ScenarioAdd></ScenarioAdd>
+    </div>
     <ScenarioList></ScenarioList>
     <ScenarioEdit 
       v-if="scenariosStore.detail" 

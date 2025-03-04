@@ -18,10 +18,10 @@ const uiStore = useUiStore();
         <slot></slot>
       </v-card-text>
 
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <slot name="actions"></slot>
-        <v-btn @click="uiStore.closeDialog(props.id)">Close</v-btn>
+      <v-card-actions class="pl-6 pr-6 pb-4">
+        <slot name="actions">
+          <v-btn @click="uiStore.closeDialog(props.id)">Close</v-btn>
+        </slot>
       </v-card-actions>
     </v-card>
   </v-dialog> 

@@ -1,44 +1,38 @@
 <script setup lang="ts">
 import type { ResponseHeaderItem } from './ResponseHeaderItem.vue';
 
-export type ResponseHeaders = Record<string, string>;
-
 const emit = defineEmits<{
-	'update:model-value': [ResponseHeaders],
+	'update:model-value': [ResponseHeaderItem[]],
 }>();	
 
-const headers = defineModel<ResponseHeaders>({ required: true });
+const headers = defineModel<ResponseHeaderItem[]>({ required: true });
 
-function updateHeader(headerToUpdate: string, { header, value }: ResponseHeaderItem) {
-	const newHeaders = { ...headers.value };
+function updateHeader(index: number, { header, value }: ResponseHeaderItem) {
+	headers.value[index] = { header, value };
 
-	if (headerToUpdate !== header) {
-		delete newHeaders[headerToUpdate];
-	}
-
-	console.log({ header, value });
-
-	emit('update:model-value', { ...newHeaders, [header]: value });
+	emit('update:model-value', headers.value);
 }
 
-function removeHeader(header: string) {
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const { [header]: _, ...rest } = headers.value;
-	emit('update:model-value', rest);
+function removeHeader(index: number) {
+	headers.value.splice(index, 1);
+
+	emit('update:model-value', headers.value);
 }
 
 function addHeader() {
-	emit('update:model-value', { ...headers.value, '': '' });
+	headers.value.push({ header: '', value: '' });
+
+	emit('update:model-value', headers.value);
 }
 </script>
 
 <template>
 	<div class="headers">
-		<div class="row" v-for="([header, value], index) in Object.entries(headers)" :key="index">
+		<div class="row" v-for="(header, index) in headers" :key="index">
 			<ResponseHeaderItem 
-				:model-value="{ header, value }"
-				@update:model-value="(val) => updateHeader(header, val)"
-				@delete="removeHeader(header)"
+				:model-value="header"
+				@update:model-value="(val) => updateHeader(index, val)"
+				@delete="removeHeader(index)"
 			/>
 		</div>
 		<v-btn 

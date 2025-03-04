@@ -48,43 +48,19 @@ export const useScenariosApi = () => {
     return { ...axios, data, load, reset };
   };
 
-  const updateName = async (scenarioId: string, name: string) => {
-    await tmockAxios.patch(`/scenario/${scenarioId}`, {
-      name,
-    });
+  const updateScenario = async (scenarioId: string, data: Scenario) => {
+    await tmockAxios.patch(`/scenario/${scenarioId}`, data);
   };
 
-  const updateRequestMethod = async (scenarioId: string, requestMethod: string) => {
-    await tmockAxios.patch(`/scenario/${scenarioId}`, {
-      requestMethod,
-    });
-  };
+  const deleteScenario = async (scenarioId: string) => {
+    await tmockAxios.delete(`/scenario/${scenarioId}`);
+  }
 
-  const updateRequestPath = async (scenarioId: string, requestPath: string) => {
-    await tmockAxios.patch(`/scenario/${scenarioId}`, {
-      requestPath,
-    });
-  };
-
-  const updateRequestCondition = async (scenarioId: string, requestCondition: string) => {
-    await tmockAxios.patch(`/scenario/${scenarioId}`, {
-      requestCondition,
-    });
-  };
-
-  const updateResponseCode = async (scenarioId: string, responseCode: number | null) => {
-    await tmockAxios.patch(`/scenario/${scenarioId}`, {
-      responseCode,
-    });
-  };
-
-  const updateResponseHeaders = async (scenarioId: string, responseHeaders: Record<string, string> | null) => {
-    await tmockAxios.patch(`/scenario/${scenarioId}`, {
-      responseHeaders,
-    });
+  const create = async (scenario: Omit<Scenario, 'id'>) => {
+    await tmockAxios.post(`/scenario`, scenario);
   };
 
   return {
-    prepareGetList, updateName, updateRequestMethod, updateRequestPath, updateRequestCondition, updateResponseCode, updateResponseHeaders
+    prepareGetList, updateScenario, deleteScenario, create
   };
 };
