@@ -22,9 +22,8 @@ declare module 'vue' {
     ResponseHeadersEdit: typeof import('./src/components/scenario/headers/ResponseHeadersEdit.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
-    ScenarioAdd: typeof import('./src/components/scenario/ScenarioAdd.vue')['default']
-    ScenarioEdit: typeof import('./src/components/scenario/ScenarioEdit.vue')['default']
     ScenarioList: typeof import('./src/components/scenario/ScenarioList.vue')['default']
+    ScenarioModal: typeof import('./src/components/scenario/ScenarioModal.vue')['default']
     SnackbarsList: typeof import('./src/components/ui/SnackbarsList.vue')['default']
     TmockLogoSvg: typeof import('./src/components/ui/TmockLogoSvg.vue')['default']
   }

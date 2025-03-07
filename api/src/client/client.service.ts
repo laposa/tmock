@@ -14,6 +14,10 @@ export class ClientService {
   async create(data: CreateClientDto) {
     const client = await this.clientsRepository.getByName(data.name);
 
+    if (!data.name) {
+      throw new BadRequestException(`Scenario name is required.`);
+    }
+
     if (client) {
       throw new NotFoundException(`Client [${data.name}] already exists.`);
     }

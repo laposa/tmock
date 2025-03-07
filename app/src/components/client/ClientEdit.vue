@@ -6,6 +6,8 @@ const clientsStore = useClientsStore();
 const clientsApi = useClientsApi();
 const { snackbarWrapper } = useSnackbarWrapper();
 
+const isLoading = ref(false);
+
 const props = defineProps<{
   client: Client;
 }>();
@@ -13,7 +15,13 @@ const props = defineProps<{
 const name = ref(props.client.name);
 
 function deleteClient() {
+  isLoading.value = true;
   uiStore.openDialog('confirmation-dialog');
+}
+
+function cancelDelete() {
+  isLoading.value = false;
+  uiStore.closeDialog('confirmation-dialog');
 }
 
 async function confirmDelete() {
@@ -26,6 +34,7 @@ async function confirmDelete() {
       await clientsApi.deleteClient(props.client.id);
       await clientsStore.load();
       await uiStore.closeDialog('client-edit');
+      isLoading.value = false;
     },
   );
 }
@@ -49,14 +58,20 @@ async function changeClientName() {
     <v-text-field label="Name" v-model="name" @change="changeClientName()"></v-text-field>
 
     <template v-slot:actions>
-      <v-btn @click="deleteClient()" color="red">Delete</v-btn>
+      <v-btn 
+        color="red"
+        :disabled="isLoading" 
+        :loading="isLoading"
+        @click="deleteClient()">
+          Delete
+      </v-btn>
       <v-spacer></v-spacer>
       <v-btn @click="uiStore.closeDialog('client-edit')">Close</v-btn>
     </template>
 
     <ConfirmationDialog 
-      @confirm="confirmDelete()"
-      @discard="uiStore.closeDialog('confirmation-dialog')">
+      @confirm="confirmDelete"
+      @discard="cancelDelete">
         Are you sure you want to delete client <b>{{ props.client.name }}</b>?
     </ConfirmationDialog>
   </ModalWindow>

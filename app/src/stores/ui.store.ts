@@ -3,8 +3,7 @@ export type DialogType =
   'client-edit' | 
   'client-conditions' | 
   'client-scenarios' | 
-  'scenario-edit' |
-  'scenario-add' |
+  'scenario-modal' |
   'confirmation-dialog';
 
 export const useUiStore = defineStore('ui', () => {

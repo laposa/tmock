@@ -68,7 +68,7 @@ async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: s
           <td></td>
           <td 
             class="scenario-name"
-            @click="openScenarioEdit('scenario-edit', item)">
+            @click="openScenarioEdit('scenario-modal', item)">
             {{ item.name }}
           </td>
           <td>{{ item.requestMethod }}</td>
@@ -77,13 +77,23 @@ async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: s
           <td>{{ item.responseCode }}</td>
           <td 
             class="scenario-name"
-            @click="openScenarioEdit('scenario-edit', item, '#responseHeaders')">
-            {{ item.responseHeaders ? 'Show headers' : '' }}
+            @click="openScenarioEdit('scenario-modal', item, '#responseHeaders')">
+              {{ item.responseHeaders ? 'Show headers' : '' }}
+              <v-tooltip
+                activator="parent"
+                location="end">
+                  <pre>{{ item.responseHeaders }}</pre>
+              </v-tooltip>
           </td>
           <td 
             class="scenario-name"
-            @click="openScenarioEdit('scenario-edit', item, '#responseBody')">
-            {{ item.responseBody ? 'Show body' : '' }}
+            @click="openScenarioEdit('scenario-modal', item, '#responseBody')">
+              {{ item.responseBody ? 'Show body' : '' }}
+              <v-tooltip
+                activator="parent"
+                location="end">
+                  <pre>{{ item.responseBody }}</pre>
+              </v-tooltip>
           </td>
         </tr>
       </template>

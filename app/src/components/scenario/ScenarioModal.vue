@@ -11,8 +11,10 @@ const { snackbarWrapper } = useSnackbarWrapper();
 
 const props = defineProps<{
   scenario: Scenario;
+  allowAdd: boolean;
 }>();
 
+const id = ref(props.scenario.id);
 const name = ref(props.scenario.name);
 const service = ref(props.scenario.service);
 const requestMethod = ref(props.scenario.requestMethod);
@@ -20,10 +22,13 @@ const requestPath = ref(props.scenario.requestPath);
 const requestCondition = ref(props.scenario.requestCondition);
 const responseCode = ref(props.scenario.responseCode);
 const responseHeaders = ref(props.scenario.responseHeaders);
+const responseHeadersArray = ref(Object.entries(responseHeaders.value ?? {}).map(([header, value]) => ({ header, value })));
+const responseBody = ref(props.scenario.responseBody);
+
 const confirmMessage = ref('');
 const confirmAction = ref('');
-
-const responseHeadersArray = ref(Object.entries(responseHeaders.value ?? {}).map(([header, value]) => ({ header, value })));
+const isEdit = ref(!!props.scenario.id);
+const isLoading = ref(false);
 
 function arrayToRecord(array: ResponseHeaderItem[]): Record<string, string> | null {
   if(array.length === 0) return null;
@@ -32,6 +37,30 @@ function arrayToRecord(array: ResponseHeaderItem[]): Record<string, string> | nu
     acc[header] = value;
     return acc;
   }, {} as Record<string, string>);
+}
+
+async function createScenario() {
+  snackbarWrapper(
+    {
+      errorTitle: `Failed to to add new scenario`,
+      successMessage: `Scenario <strong>${name.value}</strong> has been successfully created`,
+    }, 
+    async () => {
+      await scenariosApi.create({
+        name: name.value,
+        service: service.value ?? null,
+        requestMethod: requestMethod.value ?? null,
+        requestPath: requestPath.value ?? null,
+        requestCondition: requestCondition.value ?? null,
+        responseCode: responseCode.value ?? null,
+        responseHeaders: responseHeadersArray.value && responseHeadersArray.value.length > 0 ? arrayToRecord(responseHeadersArray.value) : null,
+        responseBody: null,
+      });
+      resetValues();
+      await scenariosStore.load();
+      uiStore.closeDialog('scenario-modal');
+    },
+  );
 }
 
 async function saveScenario() {
@@ -50,8 +79,11 @@ async function saveScenario() {
         requestCondition: requestCondition.value ?? null,
         responseCode: responseCode.value ?? null,
         responseHeaders: responseHeadersArray.value.length > 0 ? arrayToRecord(responseHeadersArray.value) : null,
+        responseBody: responseBody.value ?? null,
       });
+      resetValues();
       await scenariosStore.load();
+      uiStore.closeDialog('scenario-modal');
     },
   );
 }
@@ -75,6 +107,9 @@ async function toggleValue(value: string) {
       responseHeaders.value = responseHeaders.value === null ? { header: '', value: '' } : null;
       responseHeadersArray.value = responseHeadersArray.value && responseHeadersArray.value.length > 0 ? [] : [{ header: '', value: '' }];
       break;
+    case 'responseBody':
+      responseBody.value = responseBody.value === null ? '' : null;
+      break;
     default:
       return;
   }
@@ -84,7 +119,7 @@ async function confirm() {
   switch(confirmAction.value) {
     case 'close':
       uiStore.closeDialog('confirmation-dialog');
-      uiStore.closeDialog('scenario-edit');
+      uiStore.closeDialog('scenario-modal');
       break;
     case 'delete':
       uiStore.closeDialog('confirmation-dialog');
@@ -94,8 +129,8 @@ async function confirm() {
           successMessage: `Scenario <strong>${props.scenario.name}</strong> has been successfully deleted.`,
         },
         async () => {
-          await scenariosStore.deleteScenario(props.scenario.id.toString());
-          await uiStore.closeDialog('scenario-edit');
+          await scenariosStore.deleteScenario(scenariosStore.detail ? scenariosStore.detail.id.toString() : '');
+          await uiStore.closeDialog('scenario-modal');
           await scenariosStore.load();
         },
       );
@@ -108,10 +143,12 @@ async function confirm() {
 function cancel() {
   confirmAction.value = '';
   confirmMessage.value = '';
+  isLoading.value = false;
   uiStore.closeDialog('confirmation-dialog');
 }
 
 function deleteScenario() {
+  isLoading.value = true;
   confirmAction.value = 'delete';
   confirmMessage.value = 'Are you sure you want to delete this scenario?';
   uiStore.openDialog('confirmation-dialog');
@@ -119,7 +156,7 @@ function deleteScenario() {
 
 function closeDialog() {
   const newScenario = {
-    ...props.scenario,
+    ...scenariosStore.detail,
     name: name.value,
     service: service.value,
     requestMethod: requestMethod.value,
@@ -129,23 +166,37 @@ function closeDialog() {
     responseHeaders: arrayToRecord(responseHeadersArray.value),
   } as Scenario;
 
-  console.log(newScenario, props.scenario);
-
-  if(!isEqual(newScenario, props.scenario)) {
+  if(!isEqual(newScenario, scenariosStore.detail)) {
     confirmAction.value = 'close';
     confirmMessage.value = 'You will lose unsaved changes. Are you sure you want to close?';
     uiStore.openDialog('confirmation-dialog');
   } else {
-    uiStore.closeDialog('scenario-edit');
+    resetValues();
+    uiStore.closeDialog('scenario-modal');
+    isLoading.value = false;
   }
+}
+
+function resetValues() {
+  id.value = 0;
+  name.value = '';
+  service.value = '';
+  requestMethod.value = null;
+  requestPath.value = null;
+  requestCondition.value = null;
+  responseCode.value = null;
+  responseHeaders.value = null;
+  responseBody.value = null;
+  responseHeadersArray.value = [];
 }
 </script>
 
 <template>
-  <ModalWindow id="scenario-edit" title="Edit Scenario" :persistent="true">
+  <ModalWindow id="scenario-modal" :title="isEdit ? 'Edit Scenario' : 'Add Scenario'" :persistent="isEdit">
 
-    <v-text-field v-model="name" label="Name"></v-text-field>
-    <v-select v-model="service" label="Service" :items="scenariosStore.list.map((s) => s.path)"></v-select>
+    <v-text-field v-model="name" label="Name" required></v-text-field>
+
+    <v-select v-model="service" label="Service" :items="scenariosStore.list.map((s) => s.path)" required></v-select>
 
     <span class="label">Request Conditions</span>
     <div class="row">
@@ -235,15 +286,40 @@ function closeDialog() {
       v-model="responseHeadersArray"
     ></ResponseHeadersEdit>
 
-    <div class="row" id="responseBody">
-
-    </div>
-
     <template v-slot:actions>
-      <v-btn @click="deleteScenario()" color="red">Delete</v-btn>
+      <v-btn 
+        v-if="isEdit"
+        :loading="isLoading"
+        :disabled="isLoading"
+        color="red"
+        @click="deleteScenario()">
+          Delete
+      </v-btn>
+
       <v-spacer></v-spacer>
-      <v-btn @click="saveScenario()" color="indigo">Save</v-btn>
-      <v-btn @click="closeDialog()">Close</v-btn>
+
+      <v-btn 
+        v-if="!isEdit" 
+        :loading="isLoading"
+        :disabled="isLoading"
+        color="indigo"
+        @click="createScenario()">
+          Create
+      </v-btn>
+
+      <v-btn 
+        v-if="isEdit" 
+        :loading="isLoading"
+        :disabled="isLoading"
+        color="indigo"
+        @click="saveScenario()">
+          Save
+      </v-btn>
+      
+      <v-btn 
+        @click="closeDialog()">
+          Close
+      </v-btn>
     </template>
 
     <ConfirmationDialog 
@@ -272,5 +348,9 @@ function closeDialog() {
   width: 100%;
   font-size: 16px;
   padding-left: 20px;
+}
+
+.response-body {
+  padding-left: 55px; 
 }
 </style>
