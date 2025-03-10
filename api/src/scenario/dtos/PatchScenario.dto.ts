@@ -18,6 +18,7 @@ export class PatchScenarioDto {
   service: string;
 
   @IsString()
+  @IsOptional()
   @Length(1, 255)
   requestMethod?: string;
 

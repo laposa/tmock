@@ -13,13 +13,14 @@ const groupBy = [
 ];
 
 const headers = [
-  { title: 'Name', key: 'name', class: 'ahoj' },
-  { title: 'Method', key: 'requestMethod' },
-  { title: 'Path', key: 'requestPath' },
-  { title: 'Condition', key: 'requestCOndition' },
-  { title: 'Code', key: 'responseCode' },
-  { title: 'Headers', key: 'responseHeaders' },
-  { title: 'Body', key: 'responseBody' },
+  { title: '', key: 'data-table-group', width: '50px' },
+  { title: 'Name', key: 'name', width: '30%'},
+  { title: 'Method', key: 'requestMethod', width: '100px' },
+  { title: 'Path', key: 'requestPath'},
+  { title: 'Condition', key: 'requestCOndition'},
+  { title: 'Code', key: 'responseCode', width: '80px'},
+  { title: 'Headers', key: 'responseHeaders', width: '130px' },
+  { title: 'Body', key: 'responseBody', width: '120px' },
 ];
 
 async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: string) {
@@ -106,10 +107,6 @@ async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: s
   border-radius: 10px;
 }
 
-td:first-of-type,
-th:first-of-type {
-  width: 60px;
-}
 .edit {
   color: var(--primary);
   cursor: pointer;

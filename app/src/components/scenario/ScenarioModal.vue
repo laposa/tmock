@@ -194,9 +194,18 @@ function resetValues() {
 <template>
   <ModalWindow id="scenario-modal" :title="isEdit ? 'Edit Scenario' : 'Add Scenario'" :persistent="isEdit">
 
-    <v-text-field v-model="name" label="Name" required></v-text-field>
+    <v-text-field 
+      v-model="name" 
+      label="Name" 
+      required>
+    </v-text-field>
 
-    <v-select v-model="service" label="Service" :items="scenariosStore.list.map((s) => s.path)" required></v-select>
+    <v-select 
+      v-model="service" 
+      :items="scenariosStore.list.map((s) => s.path)" 
+      label="Service" 
+      required>
+    </v-select>
 
     <span class="label">Request Conditions</span>
     <div class="row">
@@ -286,6 +295,21 @@ function resetValues() {
       v-model="responseHeadersArray"
     ></ResponseHeadersEdit>
 
+    <div id="responseBody" class="row response-body" :class="{ offset: responseHeadersArray.length !== 0}">
+      <v-switch 
+        :model-value="responseBody !== null"
+        @update:model-value="toggleValue('responseBody')"
+        color="indigo"
+        :hide-details="true" /> 
+
+        <CodeEditor 
+          v-if="responseBody !== null"
+          :title="'Response Body'"
+          v-model="responseBody">
+        </CodeEditor>
+        <div v-else class="fake-label">Response Body</div>
+    </div>
+
     <template v-slot:actions>
       <v-btn 
         v-if="isEdit"
@@ -338,6 +362,20 @@ function resetValues() {
   gap: 1rem;
 }
 
+.response-body {
+  align-items: unset;
+  font-size: 16px; 
+
+  .fake-label {
+    padding-top: 15px;
+  }
+  
+  :deep(.v-selection-control) {
+    padding-top: 10px;
+    align-items: flex-start;
+  }
+}
+
 .label {
   font-weight: bold;
   margin: 1rem 0;
@@ -350,7 +388,8 @@ function resetValues() {
   padding-left: 20px;
 }
 
-.response-body {
-  padding-left: 55px; 
+.offset {
+  margin-top: 20px;
 }
+
 </style>
