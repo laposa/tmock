@@ -20,8 +20,8 @@ import {
 } from 'database/schema';
 import { AppLoggerService } from '@/common/utils/app-logger.service';
 import { TemplateService } from './services/template.service';
-import { ProxyResponse } from '@/common/utils/interfaces';
 import { ClientsRepository } from '@/common/repositories/clients.repository';
+import type { RequestScenario, ProxyResponse } from './proxy.interfaces';
 
 @Injectable()
 export class ProxyService {
@@ -87,6 +87,8 @@ export class ProxyService {
       proxyReq.removeHeader('x-forwarded-server');
     }
 
+    this.addTmockHeaders(proxyReq, res.locals!.mock);
+
     fixRequestBody(proxyReq, req);
 
     if (proxyReq.host === 'service-not-found') {
@@ -100,9 +102,9 @@ export class ProxyService {
     responseBuffer: Buffer,
     proxyRes: IncomingMessage,
     req: IncomingMessage,
-    res: ServerResponse<IncomingMessage>,
+    res: ProxyResponse,
   ) {
-    const { scenario, client } = await this.getScenario(req);
+    const { scenario, client } = res.locals!.mock;
     let response: Buffer | string = responseBuffer;
 
     if (scenario) {
@@ -120,13 +122,12 @@ export class ProxyService {
       }
     }
 
+    this.addTmockHeaders(res, { scenario, client });
     this.logProxyRequest(req, res, response, scenario, client);
     return response;
   }
 
-  private async getScenario(
-    req: IncomingMessage,
-  ): Promise<{ scenario?: ScenarioDto; client?: ClientWithScenariosDto }> {
+  async getScenario(req: IncomingMessage): Promise<RequestScenario> {
     const service = await this.getServiceByReq(req);
     if (!service) {
       return { scenario: undefined, client: undefined };
@@ -239,6 +240,21 @@ export class ProxyService {
     res.removeHeader('etag');
     res.removeHeader('if-match');
     res.removeHeader('if-none-match');
+  }
+
+  private addTmockHeaders(
+    reqOrRes: ClientRequest | ServerResponse,
+    mock: RequestScenario,
+  ) {
+    reqOrRes.setHeader('x-tmock-status', mock.scenario ? 'mocked' : 'proxied');
+
+    if (mock.client) {
+      reqOrRes.setHeader('x-tmock-client', mock.client.name);
+    }
+
+    if (mock.scenario) {
+      reqOrRes.setHeader('x-tmock-scenario', mock.scenario.name);
+    }
   }
 
   private async getServiceByReq(req: IncomingMessage) {
