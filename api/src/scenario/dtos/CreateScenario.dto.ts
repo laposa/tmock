@@ -1,4 +1,10 @@
-import { IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateScenarioDto {
   @IsString()
@@ -30,4 +36,8 @@ export class CreateScenarioDto {
   @IsString()
   @IsOptional()
   responseBody?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  skipProxy?: boolean;
 }

@@ -8,6 +8,13 @@
       "when": 1737043200820,
       "tag": "0000_useful_pride",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1742809429403,
+      "tag": "0001_moaning_magus",
+      "breakpoints": true
     }
   ]
 }

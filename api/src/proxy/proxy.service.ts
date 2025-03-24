@@ -47,6 +47,7 @@ export class ProxyService {
         proxyReq: (proxyReq, req, res) => this.onProxyReq(proxyReq, req, res),
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         proxyRes: responseInterceptor(
+          // eslint-disable-next-line @typescript-eslint/require-await
           async (responseBuffer, proxyRes, req, res) =>
             this.onProxyRes(responseBuffer, proxyRes, req, res),
         ),
@@ -91,6 +92,19 @@ export class ProxyService {
 
     fixRequestBody(proxyReq, req);
 
+    const { scenario } = res.locals!.mock;
+    if (scenario && scenario.skipProxy && scenario.responseBody) {
+      this.applyScenario(req, res);
+      this.logProxyRequest(req, res, scenario.responseBody);
+      this.writeResponse(
+        proxyReq,
+        res,
+        scenario.responseCode || 200,
+        scenario.responseBody,
+      );
+      return;
+    }
+
     if (proxyReq.host === 'service-not-found') {
       this.writeResponse(proxyReq, res, 404, 'Service not found');
       this.logProxyRequest(req, res);
@@ -98,33 +112,57 @@ export class ProxyService {
     }
   }
 
-  private async onProxyRes(
+  private onProxyRes(
     responseBuffer: Buffer,
     proxyRes: IncomingMessage,
     req: IncomingMessage,
     res: ProxyResponse,
   ) {
     const { scenario, client } = res.locals!.mock;
-    let response: Buffer | string = responseBuffer;
 
-    if (scenario) {
-      if (scenario.responseHeaders) {
-        this.applyHeaders(res, scenario.responseHeaders);
-      }
-
-      if (scenario.responseCode) {
-        res.statusCode = scenario.responseCode;
-      }
-
-      if (scenario && scenario.responseBody) {
-        response = await this.templateService.parse(scenario.responseBody);
-        this.removeEtagHeaders(res);
-      }
-    }
+    this.applyScenario(req, res);
+    const resBody = scenario?.responseBody || responseBuffer;
 
     this.addTmockHeaders(res, { scenario, client });
-    this.logProxyRequest(req, res, response, scenario, client);
-    return response;
+    this.logProxyRequest(req, res, resBody);
+    return resBody;
+  }
+
+  private applyScenario(req: IncomingMessage, res: ProxyResponse) {
+    const { scenario } = res.locals!.mock;
+    if (!scenario) {
+      return;
+    }
+
+    if (scenario.responseHeaders) {
+      this.applyHeaders(res, scenario.responseHeaders);
+    }
+
+    if (scenario.responseCode) {
+      res.statusCode = scenario.responseCode;
+    }
+
+    if (scenario.responseBody) {
+      this.removeEtagHeaders(res);
+    }
+
+    if (scenario.skipProxy && scenario.responseBody) {
+      return;
+    }
+
+    // add defaults when skipping the proxy
+    if (!scenario.responseCode) {
+      scenario.responseCode = 200;
+    }
+
+    // get the content type from the request headers
+    if (!res.getHeader('content-type')) {
+      const contentType = req.headers['accept'] || req.headers['content-type'];
+
+      if (contentType) {
+        res.setHeader('content-type', contentType);
+      }
+    }
   }
 
   async getScenario(req: IncomingMessage): Promise<RequestScenario> {
@@ -173,6 +211,13 @@ export class ProxyService {
       return true;
     });
 
+    // parse the template, so it can be used in the onProxyReq
+    if (scenario?.responseBody) {
+      scenario.responseBody = await this.templateService.parse(
+        scenario.responseBody,
+      );
+    }
+
     return { scenario, client: matchedClient };
   }
 
@@ -198,11 +243,10 @@ export class ProxyService {
     req: IncomingMessage,
     res: ProxyResponse,
     responseBuffer?: Buffer | string,
-    scenario?: ScenarioDto,
-    client?: ClientWithScenariosDto,
   ) {
     const ip = getClientIp(req);
     const url = req.url;
+    const { scenario, client } = res.locals!.mock;
 
     let message = `${ip} ${req.method} ${url} ${res.statusCode}`;
     if (scenario) {
@@ -211,7 +255,12 @@ export class ProxyService {
       if (scenario.responseHeaders) mocked.push('headers');
       if (scenario.responseBody) mocked.push('body');
 
-      message += ` [client ${client!.name}; scenario ${scenario.name}; mocked: ${mocked.join(', ')}]`;
+      let skip = '';
+      if (scenario.responseBody && scenario.skipProxy) {
+        skip = '; proxy skipped';
+      }
+
+      message += ` [client ${client!.name}; scenario ${scenario.name}; mocked: ${mocked.join(', ')}${skip}]`;
     }
 
     const ms = Date.now() - (res?.startTime || 0);
