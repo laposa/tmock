@@ -43,6 +43,7 @@ export const scenarios = pgTable(`${prefix}scenarios`, {
   responseCode: smallint('response_code'),
   responseHeaders: jsonb('response_headers').$type<Record<string, string>>(),
   responseBody: varchar('response_body'),
+  skipProxy: boolean('skip_proxy').default(false).notNull(),
 });
 
 export const scenariosRelations = relations(scenarios, ({ one }) => ({

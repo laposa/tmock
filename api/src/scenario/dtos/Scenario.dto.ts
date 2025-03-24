@@ -11,4 +11,5 @@ export class ScenarioDto implements ScenarioDtoType {
   responseCode: number | null;
   responseHeaders: Record<string, string> | null;
   responseBody: string | null;
+  skipProxy: boolean;
 }
