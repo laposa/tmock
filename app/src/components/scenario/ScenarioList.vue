@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const uiStore = useUiStore();
 const scenariosStore = useScenariosStore();
+const scenariosApi = useScenariosApi();
 
 scenariosStore.load();
 
@@ -23,8 +24,11 @@ const headers = [
   { title: 'Body', key: 'responseBody', width: '120px' },
 ];
 
-async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: string) {
-  scenariosStore.setDetail(scenario);
+async function openScenarioEdit(type: DialogType, scenarioId: number, target?: string) {
+  await scenariosApi.getById(scenarioId.toString()).then((response) => {
+    scenariosStore.setDetail(response.data.scenario);
+  }); 
+
   await uiStore.openDialog(type);
 
   if (target) {
@@ -43,8 +47,9 @@ async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: s
       :group-by="groupBy"
       :headers="headers"
       :items="scenarios"
-      items-per-page="50"
+      items-per-page="0"
       theme="dark"
+      hide-default-footer
     >
       <template v-slot:group-header="{ item, columns, toggleGroup, isGroupOpen }">
         <tr>
@@ -57,7 +62,8 @@ async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: s
             ></v-btn>
             <span 
               class="service" 
-              :class="{ open: isGroupOpen(item) }">
+              :class="{ open: isGroupOpen(item) }"
+              @click="toggleGroup(item)">
               {{ item.value ?? 'Unspecified service' }}
             </span>
           </td>
@@ -69,7 +75,7 @@ async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: s
           <td></td>
           <td 
             class="scenario-name"
-            @click="openScenarioEdit('scenario-modal', item)">
+            @click="openScenarioEdit('scenario-modal', item.id)">
             {{ item.name }}
           </td>
           <td>{{ item.requestMethod }}</td>
@@ -78,8 +84,8 @@ async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: s
           <td>{{ item.responseCode }}</td>
           <td 
             class="scenario-name"
-            @click="openScenarioEdit('scenario-modal', item, '#responseHeaders')">
-              {{ item.responseHeaders ? 'Show headers' : '' }}
+            @click="openScenarioEdit('scenario-modal', item.id, '#responseHeaders')">
+              {{ item.responseHeaders ? 'Show Headers' : '' }}
               <v-tooltip
                 activator="parent"
                 location="end">
@@ -88,8 +94,8 @@ async function openScenarioEdit(type: DialogType, scenario: Scenario, target?: s
           </td>
           <td 
             class="scenario-name"
-            @click="openScenarioEdit('scenario-modal', item, '#responseBody')">
-              {{ item.responseBody ? 'Show body' : '' }}
+            @click="openScenarioEdit('scenario-modal', item.id, '#responseBody')">
+              {{ item.responseBody ? 'Show Body' : '' }}
               <v-tooltip
                 activator="parent"
                 location="end">

@@ -31,7 +31,7 @@ async function confirmDelete() {
       successMessage: `Client <strong>${props.client.name}</strong> has been successfully deleted.`,
     },
     async () => {
-      await clientsApi.deleteClient(props.client.id);
+      await clientsApi.remove(props.client.id);
       await clientsStore.load();
       await uiStore.closeDialog('client-edit');
       isLoading.value = false;
@@ -39,7 +39,8 @@ async function confirmDelete() {
   );
 }
 
-async function changeClientName() {
+async function saveClient() {
+  isLoading.value = true;
   snackbarWrapper(
     {
       errorTitle: `Failed to rename client ${props.client.name}`,
@@ -48,6 +49,8 @@ async function changeClientName() {
     async () => {
       await clientsApi.updateName(props.client.id, name.value);
       await clientsStore.load();
+      await uiStore.closeDialog('client-edit');
+      isLoading.value = true;
     },
   );
 }
@@ -55,7 +58,7 @@ async function changeClientName() {
 
 <template>
   <ModalWindow id="client-edit" title="Edit Client">
-    <v-text-field label="Name" v-model="name" @change="changeClientName()"></v-text-field>
+    <v-text-field label="Name" v-model="name"></v-text-field>
 
     <template v-slot:actions>
       <v-btn 
@@ -66,13 +69,20 @@ async function changeClientName() {
           Delete
       </v-btn>
       <v-spacer></v-spacer>
+      <v-btn 
+        :loading="isLoading"
+        :disabled="isLoading"
+        color="indigo"
+        @click="saveClient()">
+          Save
+      </v-btn>
       <v-btn @click="uiStore.closeDialog('client-edit')">Close</v-btn>
     </template>
 
     <ConfirmationDialog 
       @confirm="confirmDelete"
       @discard="cancelDelete">
-        Are you sure you want to delete client <b>{{ props.client.name }}</b>?
+        Are you sure you want to delete the client <b>{{ props.client.name }}</b>?
     </ConfirmationDialog>
   </ModalWindow>
 </template>

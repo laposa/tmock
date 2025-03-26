@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ScenariosRepository } from '@/common/repositories/scenarios.repository';
 import {
   ScenariosListResponse,
@@ -23,10 +19,6 @@ export class ScenarioService {
     const service = await this.servicesRepository.getByPath(data.service);
     if (!service) {
       throw new NotFoundException(`Service [${data.service}] was not found.`);
-    }
-
-    if (!data.name) {
-      throw new BadRequestException(`Scenario name is required.`);
     }
 
     const scenario = await this.scenariosRepository.getByNameAndService(

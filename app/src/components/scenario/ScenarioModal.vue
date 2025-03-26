@@ -24,10 +24,19 @@ const responseCode = ref(props.scenario.responseCode);
 const responseHeaders = ref(props.scenario.responseHeaders);
 const responseHeadersArray = ref(Object.entries(responseHeaders.value ?? {}).map(([header, value]) => ({ header, value })));
 const responseBody = ref(props.scenario.responseBody);
+const responseBodyLanguage = computed({
+  get() {
+    const contentType = responseHeadersArray.value.find((item) => item.header === 'Content-Type')?.value;
+    if (contentType?.includes('html')) return 'HTML';
+    if (contentType?.includes('json')) return 'JSON';
+    return 'Plain text';
+  },
+  set: (value) => value,
+});
 
 const confirmMessage = ref('');
 const confirmAction = ref('');
-const isEdit = ref(!!props.scenario.id);
+const isEdit = computed (() => id.value !== 0);
 const isLoading = ref(false);
 
 function arrayToRecord(array: ResponseHeaderItem[]): Record<string, string> | null {
@@ -39,6 +48,19 @@ function arrayToRecord(array: ResponseHeaderItem[]): Record<string, string> | nu
   }, {} as Record<string, string>);
 }
 
+function getScenarioDto() {
+  return {
+    name: name.value,
+    service: service.value,
+    requestMethod: requestMethod.value,
+    requestPath: requestPath.value,
+    requestCondition: requestCondition.value,
+    responseCode: responseCode.value,
+    responseHeaders: arrayToRecord(responseHeadersArray.value),
+    responseBody: responseBody.value,
+  }
+}
+
 async function createScenario() {
   snackbarWrapper(
     {
@@ -46,16 +68,7 @@ async function createScenario() {
       successMessage: `Scenario <strong>${name.value}</strong> has been successfully created`,
     }, 
     async () => {
-      await scenariosApi.create({
-        name: name.value,
-        service: service.value ?? null,
-        requestMethod: requestMethod.value ?? null,
-        requestPath: requestPath.value ?? null,
-        requestCondition: requestCondition.value ?? null,
-        responseCode: responseCode.value ?? null,
-        responseHeaders: responseHeadersArray.value && responseHeadersArray.value.length > 0 ? arrayToRecord(responseHeadersArray.value) : null,
-        responseBody: null,
-      });
+      await scenariosApi.create(getScenarioDto());
       resetValues();
       await scenariosStore.load();
       uiStore.closeDialog('scenario-modal');
@@ -66,20 +79,13 @@ async function createScenario() {
 async function saveScenario() {
   snackbarWrapper(
     {
-      errorTitle: `Failed to save changes to scenario ${props.scenario.name}`,
+      errorTitle: `Failed to save changes to the scenario ${props.scenario.name}`,
       successMessage: `Scenario <strong>${props.scenario.name}</strong> has been successfully updated`,
     }, 
     async () => {
-      await scenariosApi.updateScenario(props.scenario.id.toString(), {
-        ...props.scenario,
-        name: name.value,
-        service: service.value ?? null,
-        requestMethod: requestMethod.value ?? null,
-        requestPath: requestPath.value ?? null,
-        requestCondition: requestCondition.value ?? null,
-        responseCode: responseCode.value ?? null,
-        responseHeaders: responseHeadersArray.value.length > 0 ? arrayToRecord(responseHeadersArray.value) : null,
-        responseBody: responseBody.value ?? null,
+      await scenariosApi.update(props.scenario.id.toString(), {
+        id: props.scenario.id,
+        ...getScenarioDto(),
       });
       resetValues();
       await scenariosStore.load();
@@ -129,9 +135,10 @@ async function confirm() {
           successMessage: `Scenario <strong>${props.scenario.name}</strong> has been successfully deleted.`,
         },
         async () => {
-          await scenariosStore.deleteScenario(scenariosStore.detail ? scenariosStore.detail.id.toString() : '');
+          await scenariosStore.remove(scenariosStore.detail ? scenariosStore.detail.id.toString() : '');
           await uiStore.closeDialog('scenario-modal');
           await scenariosStore.load();
+          resetValues();
         },
       );
       break;
@@ -305,6 +312,7 @@ function resetValues() {
         <CodeEditor 
           v-if="responseBody !== null"
           :title="'Response Body'"
+          :language="responseBodyLanguage"
           v-model="responseBody">
         </CodeEditor>
         <div v-else class="fake-label">Response Body</div>

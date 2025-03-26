@@ -24,6 +24,8 @@ async function saveClientCondition() {
     async () => {
       await clientsApi.updateCondition(props.client.id, condition.value);
       await clientsStore.load();
+      await uiStore.closeDialog('client-conditions');
+      isSaving.value = false;
     },
   );
 

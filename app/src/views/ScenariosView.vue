@@ -25,14 +25,14 @@ function openNewScenario() {
       <v-btn 
         color="indigo"
         @click="openNewScenario()">
-          Add scenario
+          Add Scenario
       </v-btn>
     </div>
     <ScenarioList></ScenarioList>
     <ScenarioModal 
-        v-if="scenariosStore.detail"
-        :scenario="scenariosStore.detail"
-        :allow-add="true">
-      </ScenarioModal>
+      v-if="scenariosStore.detail"
+      :scenario="scenariosStore.detail"
+      :allow-add="true">
+    </ScenarioModal>
   </main>
 </template>

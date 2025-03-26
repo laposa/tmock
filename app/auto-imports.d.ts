@@ -99,7 +99,7 @@ declare global {
   export type { Client, ClientCondition } from './src/apis/useClientsApi'
   import('./src/apis/useClientsApi')
   // @ts-ignore
-  export type { Scenario, Service, ScenariosListResponse } from './src/apis/useScenariosApi'
+  export type { Scenario, Service, ScenarioResponse, ScenariosListResponse } from './src/apis/useScenariosApi'
   import('./src/apis/useScenariosApi')
   // @ts-ignore
   export type { SnackbarCatchErrorOpts } from './src/composables/useSnackbarWrapper'

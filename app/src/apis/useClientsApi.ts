@@ -71,7 +71,7 @@ export const useClientsApi = () => {
     });
   };
 
-  const deleteClient = async (clientId: string) => {
+  const remove = async (clientId: string) => {
     await tmockAxios.delete(`/client/${clientId}`);
   }
 
@@ -82,6 +82,6 @@ export const useClientsApi = () => {
     create,
     updateCondition,
     updateScenarios,
-    deleteClient,
+    remove,
   };
 };

@@ -18,9 +18,9 @@ export const useScenariosStore = defineStore('scenarios', () => {
     detail.value = scenario;
   }
 
-  async function deleteScenario(scenarioId: string) {
-    return scenariosApi.deleteScenario(scenarioId);
+  async function remove(scenarioId: string) {
+    return scenariosApi.remove(scenarioId);
   }
 
-  return { list, detail, setDetail, deleteScenario, reset, load };
+  return { list, detail, setDetail, remove, reset, load };
 });

@@ -7,18 +7,19 @@ import type { Ref } from 'vue';
 const content = defineModel<string | null>();
 const props = defineProps<{
   title: string;
+  language: string;
 }>();
-
-const isLoading = ref(false);
-const contentCode = ref(content);
-const language = ref('JSON');
-const extensions: Ref<Extension[]> = ref([]);
-extensions.value = [json()];
 
 const languageMap: Record<string, () => Extension> = {
   'HTML': html,
   'JSON': json,
 };
+
+const isLoading = ref(false);
+const contentCode = ref(content);
+const language = ref(props.language);
+const extensions: Ref<Extension[]> = ref([]);
+extensions.value = props.language == 'Plain text' ? [] : [languageMap[props.language]()];
 
 function changeLanguage(lang: string) {
   isLoading.value = true;

@@ -38,7 +38,7 @@ function addHeader() {
 		<v-btn 
 			prepend-icon="mdi-plus"
 			@click="addHeader"> 
-				Add header
+				Add Header
 		</v-btn>
 	</div>
 </template>
