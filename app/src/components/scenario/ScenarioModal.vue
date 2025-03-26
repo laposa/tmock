@@ -33,6 +33,7 @@ const responseBodyLanguage = computed({
   },
   set: (value) => value,
 });
+const skipProxy = ref(props.scenario.skipProxy);
 
 const confirmMessage = ref('');
 const confirmAction = ref('');
@@ -58,6 +59,7 @@ function getScenarioDto() {
     responseCode: responseCode.value,
     responseHeaders: arrayToRecord(responseHeadersArray.value),
     responseBody: responseBody.value,
+    skipProxy: skipProxy.value && responseBody.value !== null,
   }
 }
 
@@ -115,6 +117,9 @@ async function toggleValue(value: string) {
       break;
     case 'responseBody':
       responseBody.value = responseBody.value === null ? '' : null;
+      break;
+    case 'skipProxy':
+      skipProxy.value = !skipProxy.value;
       break;
     default:
       return;
@@ -316,6 +321,17 @@ function resetValues() {
           v-model="responseBody">
         </CodeEditor>
         <div v-else class="fake-label">Response Body</div>
+    </div>
+
+    <div class="row" v-if="responseBody !== null">
+      <v-switch 
+        :model-value="skipProxy"
+        @update:model-value="toggleValue('skipProxy')"
+        color="indigo"
+        :hide-details="true" /> 
+      <div class="fake-label">
+        Skip Proxy
+      </div>
     </div>
 
     <template v-slot:actions>

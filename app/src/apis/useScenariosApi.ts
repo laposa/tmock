@@ -10,6 +10,7 @@ export type Scenario = {
   responseCode: number | null;
   responseHeaders: Record<string, string> | null;
   responseBody: string | null;
+  skipProxy: boolean;
 };
 
 export type Service = {
