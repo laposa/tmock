@@ -10,7 +10,9 @@ export default {
     database: process.env.DATABASE_NAME!,
     user: process.env.DATABASE_USER!,
     password: process.env.DATABASE_PASSWORD!,
-    ssl: process.env.DATABASE_ENABLE_SSL === 'true',
+    ssl: {
+      rejectUnauthorized: false,
+    },
   },
   verbose: true,
   strict: true,

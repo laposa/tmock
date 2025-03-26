@@ -37,4 +37,8 @@ export class CreateScenarioDto {
   @IsString()
   @IsOptional()
   responseBody?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  skipProxy?: boolean;
 }

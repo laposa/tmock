@@ -41,4 +41,8 @@ export class PatchScenarioDto {
   @IsString()
   @IsOptional()
   responseBody?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  skipProxy?: boolean;
 }
