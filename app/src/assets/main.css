@@ -21,3 +21,24 @@ a,
     display: flex;
   }
 }
+
+.highlight {
+  color: var(--primary);
+}
+
+.error {
+  color: var(--error);
+}
+
+.row {
+  display: flex;
+  width: 100%;
+  gap: 20px;
+}
+
+.heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}

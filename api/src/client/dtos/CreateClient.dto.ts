@@ -4,10 +4,12 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Length,
 } from 'class-validator';
 
 export class CreateClientDto {
   @IsString()
+  @Length(1, 255)
   name: string;
 
   @IsObject()

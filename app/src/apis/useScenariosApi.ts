@@ -10,11 +10,16 @@ export type Scenario = {
   responseCode: number | null;
   responseHeaders: Record<string, string> | null;
   responseBody: string | null;
+  skipProxy: boolean;
 };
 
 export type Service = {
   path: string;
   scenarios: Scenario[];
+};
+
+export type ScenarioResponse = {
+  scenario: Scenario;
 };
 
 export type ScenariosListResponse = {
@@ -23,6 +28,10 @@ export type ScenariosListResponse = {
 
 export const useScenariosApi = () => {
   const tmockAxios = useTmockAxios();
+
+  const getById = async (scenarioId: string) => {
+    return await tmockAxios.get<ScenarioResponse>(`/scenario/${scenarioId}`);
+  }
 
   const prepareGetList = () => {
     const axios = useAxios<ScenariosListResponse>('/scenario', { method: 'GET' }, tmockAxios, {
@@ -48,7 +57,19 @@ export const useScenariosApi = () => {
     return { ...axios, data, load, reset };
   };
 
+  const update = async (scenarioId: string, data: Scenario) => {
+    await tmockAxios.patch(`/scenario/${scenarioId}`, data);
+  };
+
+  const remove = async (scenarioId: string) => {
+    await tmockAxios.delete(`/scenario/${scenarioId}`);
+  }
+
+  const create = async (scenario: Omit<Scenario, 'id'>) => {
+    await tmockAxios.post(`/scenario`, scenario);
+  };
+
   return {
-    prepareGetList,
+    getById, prepareGetList, update, remove, create
   };
 };

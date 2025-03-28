@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { DialogType } from '@/stores/ui.store';
-
 const uiStore = useUiStore();
 const clientsStore = useClientsStore();
 const scenariosStore = useScenariosStore();
@@ -12,7 +10,7 @@ scenariosStore.load();
 
 const clients = computed(() => clientsStore.list ?? []);
 
-function openEdit(type: DialogType, client: Client) {
+function openClientEdit(type: DialogType, client: Client) {
   clientsStore.setDetail(client);
   uiStore.openDialog(type);
 }
@@ -75,10 +73,10 @@ async function disableScenario(client: Client, scenarioId: number) {
             />
           </td>
           <td>
-            <span class="edit" @click="openEdit('client-edit', client)">{{ client.name }}</span>
+            <span class="edit" @click="openClientEdit('client-edit', client)">{{ client.name }}</span>
           </td>
           <td>
-            <span class="edit" @click="openEdit('client-conditions', client)">Conditions</span>
+            <span class="edit" @click="openClientEdit('client-conditions', client)">Conditions</span>
           </td>
           <td>
             <div class="chips">
@@ -92,7 +90,7 @@ async function disableScenario(client: Client, scenarioId: number) {
                   <b>{{ scenario.service }}</b> | {{ scenario.name }}
                 </p>
               </v-chip>
-              <button @click="openEdit('client-scenarios', client)">
+              <button @click="openClientEdit('client-scenarios', client)">
                 <v-icon class="client-scenarios-add" color="white" icon="mdi-plus-circle"> </v-icon>
               </button>
             </div>

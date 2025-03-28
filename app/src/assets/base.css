@@ -25,6 +25,7 @@
 :root {
   --primary: #596dde;
   --primary-light: #7c8dea;
+  --error: #ff4d4f;
 
   --color-background: var(--vt-c-white);
   --color-background-soft: var(--vt-c-white-soft);
