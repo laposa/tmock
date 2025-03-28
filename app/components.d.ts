@@ -26,6 +26,7 @@ declare module 'vue' {
     ScenarioList: typeof import('./src/components/scenario/ScenarioList.vue')['default']
     ScenarioModal: typeof import('./src/components/scenario/ScenarioModal.vue')['default']
     SnackbarsList: typeof import('./src/components/ui/SnackbarsList.vue')['default']
+    TmockLogoAnimated: typeof import('./src/components/ui/TmockLogoAnimated.vue')['default']
     TmockLogoSvg: typeof import('./src/components/ui/TmockLogoSvg.vue')['default']
   }
 }

@@ -63,15 +63,11 @@ function changeLanguage(lang: string) {
 </template>
 
 <style scoped>
-  .v-codemirror {
-    width: 100%;
-  }
-
   .code-editor {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    width: 100%;
+    width: calc(100% - 55px);
   }
 
   .toolbar {

@@ -5,6 +5,8 @@ const scenariosApi = useScenariosApi();
 
 scenariosStore.load();
 
+const isDetailLoaded = ref(false);
+
 const scenarios = computed(() => scenariosStore.list.flatMap((s) => s.scenarios) ?? []);
 
 const groupBy = [
@@ -25,11 +27,14 @@ const headers = [
 ];
 
 async function openScenarioEdit(type: DialogType, scenarioId: number, target?: string) {
+  isDetailLoaded.value = false;
+  uiStore.openDialog(type);
+
   await scenariosApi.getById(scenarioId.toString()).then((response) => {
     scenariosStore.setDetail(response.data.scenario);
   }); 
 
-  await uiStore.openDialog(type);
+  isDetailLoaded.value = true;
 
   if (target) {
     const element = document.querySelector(target);
@@ -39,10 +44,39 @@ async function openScenarioEdit(type: DialogType, scenarioId: number, target?: s
   }
 }
 
+async function openNewScenario() {
+  isDetailLoaded.value = false;
+  uiStore.openDialog('scenario-modal');
+
+  await scenariosStore.setDetail({
+    id: 0,
+    name: '',
+    service: '',
+    requestMethod: null,
+    requestPath: null,
+    requestCondition: null,
+    responseCode: null,
+    responseHeaders: null,
+    responseBody: null,
+    skipProxy: false,
+  });
+
+  isDetailLoaded.value = true;
+}
+
 </script>
 
 <template>
   <main>
+    <div class="heading">
+      <h1>Scenarios</h1>
+      <v-btn 
+        color="indigo"
+        @click="openNewScenario()">
+          Add Scenario
+      </v-btn>
+    </div>
+
     <v-data-table
       :group-by="groupBy"
       :headers="headers"
@@ -87,6 +121,7 @@ async function openScenarioEdit(type: DialogType, scenarioId: number, target?: s
             @click="openScenarioEdit('scenario-modal', item.id, '#responseHeaders')">
               {{ item.responseHeaders ? 'Show Headers' : '' }}
               <v-tooltip
+                v-if="item.responseHeaders"
                 activator="parent"
                 location="end">
                   <pre>{{ item.responseHeaders }}</pre>
@@ -97,6 +132,7 @@ async function openScenarioEdit(type: DialogType, scenarioId: number, target?: s
             @click="openScenarioEdit('scenario-modal', item.id, '#responseBody')">
               {{ item.responseBody ? 'Show Body' : '' }}
               <v-tooltip
+                v-if="item.responseBody"
                 activator="parent"
                 location="end">
                   <pre>{{ item.responseBody }}</pre>
@@ -105,6 +141,10 @@ async function openScenarioEdit(type: DialogType, scenarioId: number, target?: s
         </tr>
       </template>
     </v-data-table>
+    <ScenarioModal 
+      v-if="uiStore.dialogs.includes('scenario-modal')"
+      :detail-loading="!isDetailLoaded">
+    </ScenarioModal>
   </main>
 </template>
 
