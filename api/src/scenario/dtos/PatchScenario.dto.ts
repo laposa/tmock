@@ -1,18 +1,26 @@
 import {
+  IsBoolean,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
-  IsBoolean,
+  Length,
 } from 'class-validator';
 
 export class PatchScenarioDto {
   @IsString()
   @IsOptional()
+  @Length(1, 255)
   name?: string;
 
   @IsString()
   @IsOptional()
+  @Length(1, 255)
+  service: string;
+
+  @IsString()
+  @IsOptional()
+  @Length(1, 255)
   requestMethod?: string;
 
   @IsString()

@@ -2,6 +2,7 @@
 import type { Client } from '@/apis/useClientsApi';
 
 const clientsStore = useClientsStore();
+const uiStore = useUiStore();
 const clientsApi = useClientsApi();
 const { snackbarWrapper } = useSnackbarWrapper();
 
@@ -23,6 +24,8 @@ async function saveClientCondition() {
     async () => {
       await clientsApi.updateCondition(props.client.id, condition.value);
       await clientsStore.load();
+      await uiStore.closeDialog('client-conditions');
+      isSaving.value = false;
     },
   );
 
@@ -35,9 +38,14 @@ async function saveClientCondition() {
     <ClientConditionGroup v-model="condition" :is-top-level="true" />
 
     <template #actions>
-      <v-btn @click="saveClientCondition()" color="primary" :disabled="isSaving" :loading="isSaving"
-        >Save</v-btn
-      >
+      <v-btn 
+        color="primary" 
+        :disabled="isSaving" 
+        :loading="isSaving"
+        @click="saveClientCondition()">
+          Save
+      </v-btn>
+      <v-btn @click="uiStore.closeDialog('client-conditions')">Close</v-btn>
     </template>
   </ModalWindow>
 </template>
