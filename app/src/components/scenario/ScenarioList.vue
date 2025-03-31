@@ -30,9 +30,8 @@ async function openScenarioEdit(type: DialogType, scenarioId: number, target?: s
   isDetailLoaded.value = false;
   uiStore.openDialog(type);
 
-  await scenariosApi.getById(scenarioId.toString()).then((response) => {
-    scenariosStore.setDetail(response.data.scenario);
-  }); 
+  const scenario = await scenariosApi.getById(scenarioId.toString());
+  scenariosStore.setDetail(scenario.data.scenario)
 
   isDetailLoaded.value = true;
 
