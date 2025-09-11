@@ -4,12 +4,12 @@ RUN apt-get -y update && apt-get -y upgrade
 
 WORKDIR /usr/src/app
 COPY app ./
-RUN npm install \
+RUN npm ci \
     && npm run build 
 
 WORKDIR /usr/src/api
 COPY api ./
-RUN npm install \
+RUN npm ci \
     && npm run build \
     && cp -r ../app/dist ./public
 
