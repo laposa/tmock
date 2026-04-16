@@ -5,6 +5,7 @@
     <!-- TODO - play logo animation on loading? -->
     <RouterLink to="/" class="logo"><TmockLogoSvg></TmockLogoSvg><span>Tmock</span></RouterLink>
     <div class="menu">
+      <RouterLink to="/services">Services</RouterLink>
       <RouterLink to="/">Clients</RouterLink>
       <RouterLink to="/scenarios">Scenarios</RouterLink>
     </div>

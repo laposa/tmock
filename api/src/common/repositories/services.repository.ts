@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppDatabase, InjectDb } from '../providers/database.provider';
-import { ServiceWithScenariosDto } from 'database/schema';
+import { services, ServiceWithScenariosDto } from 'database/schema';
+import { eq, asc } from 'drizzle-orm';
 
 @Injectable()
 export class ServicesRepository {
@@ -14,9 +15,34 @@ export class ServicesRepository {
     });
   }
 
+  async getAll() {
+    return this.db.query.services.findMany({
+      orderBy: [asc(services.name)],
+    });
+  }
+
   async getByPath(path: string) {
     return this.db.query.services.findFirst({
       where: (service, { eq }) => eq(service.path, path),
     });
+  }
+
+  async create(data: { name: string; upstreamUrl: string; path: string }) {
+    return this.db.insert(services).values(data).returning();
+  }
+
+  async update(
+    path: string,
+    data: Partial<{ name: string; upstreamUrl: string; path: string }>,
+  ) {
+    return this.db
+      .update(services)
+      .set(data)
+      .where(eq(services.path, path))
+      .returning();
+  }
+
+  async delete(path: string) {
+    return this.db.delete(services).where(eq(services.path, path));
   }
 }
