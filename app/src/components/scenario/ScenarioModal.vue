@@ -8,8 +8,11 @@ const props = defineProps<{
 }>();
 
 const scenariosStore = useScenariosStore();
+const servicesStore = useServicesStore();
 const uiStore = useUiStore();
 const scenariosApi = useScenariosApi();
+
+servicesStore.load();
 const detail = computed(() => scenariosStore.detail);
 
 const { snackbarWrapper } = useSnackbarWrapper();
@@ -239,10 +242,12 @@ function resetValues() {
         required>
       </v-text-field>
 
-      <v-select 
-        v-model="service" 
-        :items="scenariosStore.list.map((s) => s.path)" 
-        label="Service" 
+      <v-select
+        v-model="service"
+        :items="servicesStore.list"
+        item-title="name"
+        item-value="path"
+        label="Service"
         required>
       </v-select>
 

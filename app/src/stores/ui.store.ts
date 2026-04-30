@@ -6,12 +6,16 @@ export type DialogType =
   'scenario-modal' |
   'confirmation-dialog' |
   'user-add' |
-  'user-edit';
+  'user-edit' |
+  'service-add' |
+  'service-edit' |
+  'confirmation-dialog';
 
 export const useUiStore = defineStore('ui', () => {
   const dialogs = ref<DialogType[]>([]);
   const clientsStore = useClientsStore();
   const scenariosStore = useScenariosStore();
+  const servicesStore = useServicesStore();
   const confirmValue = ref('');
 
   function openDialog(type: DialogType) {
@@ -23,6 +27,7 @@ export const useUiStore = defineStore('ui', () => {
     if(type !== 'confirmation-dialog') {
       clientsStore.setDetail(null);
       scenariosStore.setDetail(null);
+      servicesStore.setDetail(null);
     }
   }
 

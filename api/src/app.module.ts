@@ -1,13 +1,14 @@
+import { CacheModule } from '@nestjs/cache-manager';
 import { Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { CacheModule } from '@nestjs/cache-manager';
-import { AppController } from './app.controller';
 import appConfig from './app.config';
-import { CommonModule } from './common/common.module';
-import { ScenarioModule } from './scenario/scenario.module';
-import { ProxyModule } from './proxy/proxy.module';
-import { ClientModule } from './client/client.module';
+import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
+import { ClientModule } from './client/client.module';
+import { CommonModule } from './common/common.module';
+import { ProxyModule } from './proxy/proxy.module';
+import { ScenarioModule } from './scenario/scenario.module';
+import { ServiceModule } from './service/service.module';
 import { UserModule } from './user/user.module';
 
 @Module({
@@ -23,6 +24,7 @@ import { UserModule } from './user/user.module';
     ClientModule,
     AuthModule,
     UserModule,
+    ServiceModule,
   ],
   controllers: [AppController],
 })
