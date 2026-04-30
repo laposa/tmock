@@ -7,6 +7,8 @@ import { ScenariosRepository } from './repositories/scenarios.repository';
 import { ServicesRepository } from './repositories/services.repository';
 import { OptionsRepository } from './repositories/options.repository';
 import { ClientsRepository } from './repositories/clients.repository';
+import { UsersRepository } from './repositories/users.repository';
+import { CsrfService } from './providers/csrf.service';
 
 @Global()
 @Module({
@@ -21,6 +23,8 @@ import { ClientsRepository } from './repositories/clients.repository';
     ServicesRepository,
     OptionsRepository,
     ClientsRepository,
+    UsersRepository,
+    CsrfService,
   ],
   exports: [
     AppLoggerService,
@@ -29,6 +33,8 @@ import { ClientsRepository } from './repositories/clients.repository';
     ServicesRepository,
     OptionsRepository,
     ClientsRepository,
+    UsersRepository,
+    CsrfService,
   ],
 })
 export class CommonModule {}

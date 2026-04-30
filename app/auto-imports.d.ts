@@ -67,6 +67,8 @@ declare global {
   const unref: typeof import('vue')['unref']
   const useAppRouter: typeof import('./src/composables/useAppRouter')['useAppRouter']
   const useAttrs: typeof import('vue')['useAttrs']
+  const useAuthApi: typeof import('./src/apis/useAuthApi')['useAuthApi']
+  const useAuthStore: typeof import('./src/stores/auth.store')['useAuthStore']
   const useClientsApi: typeof import('./src/apis/useClientsApi')['useClientsApi']
   const useClientsStore: typeof import('./src/stores/clients.store')['useClientsStore']
   const useConfig: typeof import('./src/composables/useConfig')['useConfig']
@@ -79,12 +81,15 @@ declare global {
   const useRouter: typeof import('vue-router')['useRouter']
   const useScenariosApi: typeof import('./src/apis/useScenariosApi')['useScenariosApi']
   const useScenariosStore: typeof import('./src/stores/scenarios.store')['useScenariosStore']
+  const useServicesApi: typeof import('./src/apis/useServicesApi')['useServicesApi']
+  const useServicesStore: typeof import('./src/stores/services.store')['useServicesStore']
   const useSlots: typeof import('vue')['useSlots']
   const useSnackbarWrapper: typeof import('./src/composables/useSnackbarWrapper')['useSnackbarWrapper']
   const useSnackbarsStore: typeof import('./src/stores/snackbars.store')['useSnackbarsStore']
   const useTemplateRef: typeof import('vue')['useTemplateRef']
   const useTmockAxios: typeof import('./src/apis/useTmockAxios')['useTmockAxios']
   const useUiStore: typeof import('./src/stores/ui.store')['useUiStore']
+  const useUsersApi: typeof import('./src/apis/useUsersApi')['useUsersApi']
   const watch: typeof import('vue')['watch']
   const watchEffect: typeof import('vue')['watchEffect']
   const watchPostEffect: typeof import('vue')['watchPostEffect']
@@ -96,11 +101,17 @@ declare global {
   export type { Component, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
+  export type { User } from './src/apis/useAuthApi'
+  import('./src/apis/useAuthApi')
+  // @ts-ignore
   export type { Client, ClientCondition } from './src/apis/useClientsApi'
   import('./src/apis/useClientsApi')
   // @ts-ignore
   export type { Scenario, Service, ScenarioResponse, ScenariosListResponse } from './src/apis/useScenariosApi'
   import('./src/apis/useScenariosApi')
+  // @ts-ignore
+  export type { CreateUserPayload, UpdateUserPayload, UpdateProfilePayload } from './src/apis/useUsersApi'
+  import('./src/apis/useUsersApi')
   // @ts-ignore
   export type { SnackbarCatchErrorOpts } from './src/composables/useSnackbarWrapper'
   import('./src/composables/useSnackbarWrapper')

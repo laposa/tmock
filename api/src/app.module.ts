@@ -7,6 +7,8 @@ import { CommonModule } from './common/common.module';
 import { ScenarioModule } from './scenario/scenario.module';
 import { ProxyModule } from './proxy/proxy.module';
 import { ClientModule } from './client/client.module';
+import { AuthModule } from './auth/auth.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { ClientModule } from './client/client.module';
     ScenarioModule,
     ProxyModule,
     ClientModule,
+    AuthModule,
+    UserModule,
   ],
   controllers: [AppController],
 })

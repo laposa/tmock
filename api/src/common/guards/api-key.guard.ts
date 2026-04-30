@@ -1,27 +1,24 @@
 import { Request } from 'express';
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { AppConfig, InjectConfig } from '@/app.config';
+import '@/types/express-session';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   constructor(@InjectConfig() protected readonly config: AppConfig) {}
 
   canActivate(context: ExecutionContext) {
+    const req = context.switchToHttp().getRequest<Request>();
+
+    if (req.session?.userId) {
+      return true;
+    }
+
     if (!this.config.apiKey) {
       return true;
     }
 
-    const req = context.switchToHttp().getRequest<Request>();
     const apiKeyHeader = req.headers.apikey;
-
-    if (!apiKeyHeader) {
-      return false;
-    }
-
-    if (apiKeyHeader === this.config.apiKey) {
-      return true;
-    }
-
-    return false;
+    return apiKeyHeader === this.config.apiKey;
   }
 }

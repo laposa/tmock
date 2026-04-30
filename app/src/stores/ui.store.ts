@@ -1,10 +1,12 @@
-export type DialogType = 
-  'client-add' | 
-  'client-edit' | 
-  'client-conditions' | 
-  'client-scenarios' | 
+export type DialogType =
+  'client-add' |
+  'client-edit' |
+  'client-conditions' |
+  'client-scenarios' |
   'scenario-modal' |
-  'confirmation-dialog';
+  'confirmation-dialog' |
+  'user-add' |
+  'user-edit';
 
 export const useUiStore = defineStore('ui', () => {
   const dialogs = ref<DialogType[]>([]);
