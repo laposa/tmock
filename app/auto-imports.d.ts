@@ -67,6 +67,8 @@ declare global {
   const unref: typeof import('vue')['unref']
   const useAppRouter: typeof import('./src/composables/useAppRouter')['useAppRouter']
   const useAttrs: typeof import('vue')['useAttrs']
+  const useAuthApi: typeof import('./src/apis/useAuthApi')['useAuthApi']
+  const useAuthStore: typeof import('./src/stores/auth.store')['useAuthStore']
   const useClientsApi: typeof import('./src/apis/useClientsApi')['useClientsApi']
   const useClientsStore: typeof import('./src/stores/clients.store')['useClientsStore']
   const useConfig: typeof import('./src/composables/useConfig')['useConfig']
@@ -87,6 +89,7 @@ declare global {
   const useTemplateRef: typeof import('vue')['useTemplateRef']
   const useTmockAxios: typeof import('./src/apis/useTmockAxios')['useTmockAxios']
   const useUiStore: typeof import('./src/stores/ui.store')['useUiStore']
+  const useUsersApi: typeof import('./src/apis/useUsersApi')['useUsersApi']
   const watch: typeof import('vue')['watch']
   const watchEffect: typeof import('vue')['watchEffect']
   const watchPostEffect: typeof import('vue')['watchPostEffect']
@@ -98,6 +101,9 @@ declare global {
   export type { Component, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
+  export type { User } from './src/apis/useAuthApi'
+  import('./src/apis/useAuthApi')
+  // @ts-ignore
   export type { Client, ClientCondition } from './src/apis/useClientsApi'
   import('./src/apis/useClientsApi')
   // @ts-ignore
@@ -106,6 +112,9 @@ declare global {
   // @ts-ignore
   export type { Service } from './src/apis/useServicesApi'
   import('./src/apis/useServicesApi')
+  // @ts-ignore
+  export type { CreateUserPayload, UpdateUserPayload, UpdateProfilePayload } from './src/apis/useUsersApi'
+  import('./src/apis/useUsersApi')
   // @ts-ignore
   export type { SnackbarCatchErrorOpts } from './src/composables/useSnackbarWrapper'
   import('./src/composables/useSnackbarWrapper')

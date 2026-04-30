@@ -24,6 +24,7 @@ const appConfig = registerAs('app', () => {
       password: process.env.DATABASE_PASSWORD!,
       ssl: process.env.DATABASE_ENABLE_SSL === 'true' ? 'require' : false,
     },
+    sessionSecret: getSessionSecret(process.env),
     proxy: {
       removeForwardedHeaders: process.env.PROXY_REMOVE_FORWARDED_HEADERS,
     },
@@ -33,5 +34,15 @@ const appConfig = registerAs('app', () => {
 export const InjectConfig = () => Inject(appConfig.KEY);
 
 export type AppConfig = ConfigType<typeof appConfig>;
+
+function getSessionSecret(env: NodeJS.ProcessEnv): string {
+  if (env.SESSION_SECRET) {
+    return env.SESSION_SECRET;
+  }
+  if (env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET environment variable is required in production');
+  }
+  return 'tmock-dev-secret';
+}
 
 export default appConfig;

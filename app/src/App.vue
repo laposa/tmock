@@ -1,8 +1,10 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+const authStore = useAuthStore();
+</script>
 
 <template>
   <div class="content">
-    <header>
+    <header v-if="authStore.isAuthenticated">
       <MainNavigation></MainNavigation>
       <SnackbarsList></SnackbarsList>
     </header>

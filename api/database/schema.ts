@@ -99,7 +99,17 @@ export const clientsScenariosRelations = relations(
   }),
 );
 
+export const users = pgTable(`${prefix}users`, {
+  id: serial('id').primaryKey(),
+  name: varchar('name').notNull(),
+  email: varchar('email').notNull().unique(),
+  password: varchar('password').notNull(),
+  admin: boolean('admin').default(false).notNull(),
+  deleted: boolean('deleted').default(false).notNull(),
+});
+
 // type definitions
+export type UserDto = typeof users.$inferSelect;
 export type ScenarioDto = typeof scenarios.$inferSelect;
 export type ServiceDto = typeof services.$inferSelect;
 export type OptionsDto = typeof options.$inferSelect;

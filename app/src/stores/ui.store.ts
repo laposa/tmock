@@ -4,6 +4,9 @@ export type DialogType =
   'client-conditions' |
   'client-scenarios' |
   'scenario-modal' |
+  'confirmation-dialog' |
+  'user-add' |
+  'user-edit' |
   'service-add' |
   'service-edit' |
   'confirmation-dialog';

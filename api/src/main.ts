@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as express from 'express';
+import * as session from 'express-session';
+import * as cookieParser from 'cookie-parser';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -10,6 +12,7 @@ import appConfig, { AppConfig } from './app.config';
 import { AppLoggerService } from './common/utils/app-logger.service';
 import { AppFilter } from './common/filters/app.filter';
 import { frontendMiddleware } from './common/middlewares/frontend.middleware';
+import { CsrfService } from './common/providers/csrf.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -19,9 +22,31 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.use(frontendMiddleware);
-  app.enableCors();
+  app.enableCors({
+    origin: true,
+    credentials: true,
+  });
+
+  app.use(cookieParser());
+  app.use(
+    session({
+      secret: config.sessionSecret,
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: config.env === 'production',
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      },
+    }),
+  );
+
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  const csrfService = app.get(CsrfService);
+  app.use(csrfService.doubleCsrfProtection);
 
   app.use(helmet());
 

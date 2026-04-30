@@ -1,4 +1,18 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+const authStore = useAuthStore();
+const authApi = useAuthApi();
+const router = useRouter();
+
+async function handleLogout() {
+  try {
+    await authApi.logout();
+  } catch {
+    // ignore logout errors
+  }
+  authStore.clearAuth();
+  router.push('/login');
+}
+</script>
 
 <template>
   <nav>
@@ -8,6 +22,9 @@
       <RouterLink to="/services">Services</RouterLink>
       <RouterLink to="/">Clients</RouterLink>
       <RouterLink to="/scenarios">Scenarios</RouterLink>
+      <RouterLink v-if="authStore.isAdmin" to="/accounts">Accounts</RouterLink>
+      <RouterLink to="/my-account">My Account</RouterLink>
+      <a href="#" @click.prevent="handleLogout">Logout</a>
     </div>
   </nav>
 </template>
@@ -19,7 +36,7 @@ nav {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 2rem;
-  font-size: 1.2rem;
+  font-size: 1rem;
 }
 
 .logo {
