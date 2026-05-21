@@ -5,6 +5,7 @@ export type Client = {
   id: string;
   name: string;
   enabled: boolean;
+  token: string | null;
   condition?: ClientCondition;
   scenarios?: Omit<Scenario[], 'body'>;
 };
@@ -75,6 +76,15 @@ export const useClientsApi = () => {
     await tmockAxios.delete(`/client/${clientId}`);
   }
 
+  const generateToken = async (clientId: string): Promise<string> => {
+    const { data } = await tmockAxios.post<{ token: string }>(`/client/${clientId}/token`);
+    return data.token;
+  };
+
+  const revokeToken = async (clientId: string) => {
+    await tmockAxios.delete(`/client/${clientId}/token`);
+  };
+
   return {
     prepareGetList,
     updateEnabled,
@@ -83,5 +93,7 @@ export const useClientsApi = () => {
     updateCondition,
     updateScenarios,
     remove,
+    generateToken,
+    revokeToken,
   };
 };

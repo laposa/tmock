@@ -88,8 +88,7 @@ function injectEnvs(config: AppConfig) {
 
   const indexFilePath = path.resolve(publicPath, indexFile);
   const indexFileContent = fs.readFileSync(indexFilePath, 'utf8');
-  let newContent = indexFileContent.replace(/\$\{API_ENDPOINT\}/g, '/api');
-  newContent = newContent.replace(/\$\{API_KEY\}/g, config.apiKey);
+  const newContent = indexFileContent.replace(/\$\{API_ENDPOINT\}/g, '/api');
 
   fs.writeFileSync(indexFilePath, newContent);
 }

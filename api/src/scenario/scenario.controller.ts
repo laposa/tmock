@@ -21,10 +21,10 @@ import {
 } from './dtos';
 import { ResponseMessage } from '@/common/dtos/ResponseMessage.dto';
 import { ProxyService } from '@/proxy/proxy.service';
-import { ApiKeyGuard } from '@/common/guards/api-key.guard';
+import { SessionGuard } from '@/common/guards/session.guard';
 
 @Controller('scenario')
-@UseGuards(ApiKeyGuard)
+@UseGuards(SessionGuard)
 export class ScenarioController {
   constructor(
     private readonly service: ScenarioService,

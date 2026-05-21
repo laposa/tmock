@@ -22,5 +22,9 @@ const clientsStore = useClientsStore();
       v-if="clientsStore.detail"
       :client="clientsStore.detail"
     ></ClientScenariosEdit>
+    <ClientToken
+      v-if="clientsStore.detail"
+      :client="clientsStore.detail"
+    ></ClientToken>
   </main>
 </template>

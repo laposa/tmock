@@ -9,6 +9,10 @@ import { OptionsRepository } from './repositories/options.repository';
 import { ClientsRepository } from './repositories/clients.repository';
 import { UsersRepository } from './repositories/users.repository';
 import { CsrfService } from './providers/csrf.service';
+import { SessionGuard } from './guards/session.guard';
+import { ClientTokenGuard } from './guards/client-token.guard';
+import { ClientTokenOrSessionGuard } from './guards/client-token-or-session.guard';
+import { ClientTokenScopeGuard } from './guards/client-token-scope.guard';
 
 @Global()
 @Module({
@@ -25,6 +29,10 @@ import { CsrfService } from './providers/csrf.service';
     ClientsRepository,
     UsersRepository,
     CsrfService,
+    SessionGuard,
+    ClientTokenGuard,
+    ClientTokenOrSessionGuard,
+    ClientTokenScopeGuard,
   ],
   exports: [
     AppLoggerService,
@@ -35,6 +43,10 @@ import { CsrfService } from './providers/csrf.service';
     ClientsRepository,
     UsersRepository,
     CsrfService,
+    SessionGuard,
+    ClientTokenGuard,
+    ClientTokenOrSessionGuard,
+    ClientTokenScopeGuard,
   ],
 })
 export class CommonModule {}
