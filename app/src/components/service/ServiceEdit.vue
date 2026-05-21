@@ -77,6 +77,7 @@ async function saveService() {
           Delete
       </v-btn>
       <v-spacer></v-spacer>
+      <v-btn @click="uiStore.closeDialog('service-edit')">Close</v-btn>
       <v-btn
         :loading="isLoading"
         :disabled="isLoading"
@@ -84,7 +85,6 @@ async function saveService() {
         @click="saveService()">
           Save
       </v-btn>
-      <v-btn @click="uiStore.closeDialog('service-edit')">Close</v-btn>
     </template>
 
     <ConfirmationDialog

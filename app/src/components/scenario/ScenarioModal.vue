@@ -379,8 +379,13 @@ function resetValues() {
 
       <v-spacer></v-spacer>
 
-      <v-btn 
-        v-if="!isEdit" 
+      <v-btn
+        @click="closeDialog()">
+          Close
+      </v-btn>
+
+      <v-btn
+        v-if="!isEdit"
         :loading="isLoading"
         :disabled="isLoading || props.detailLoading"
         color="indigo"
@@ -388,18 +393,13 @@ function resetValues() {
           Create
       </v-btn>
 
-      <v-btn 
-        v-if="isEdit" 
+      <v-btn
+        v-if="isEdit"
         :loading="isLoading"
         :disabled="isLoading || props.detailLoading"
         color="indigo"
         @click="saveScenario()">
           Save
-      </v-btn>
-      
-      <v-btn 
-        @click="closeDialog()">
-          Close
       </v-btn>
     </template>
 
