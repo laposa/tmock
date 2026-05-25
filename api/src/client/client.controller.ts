@@ -22,10 +22,12 @@ import {
   PatchClientDto,
   ClientResponse,
 } from './dtos';
-import { ApiKeyGuard } from '@/common/guards/api-key.guard';
+import { ClientTokenOrSessionGuard } from '@/common/guards/client-token-or-session.guard';
+import { ClientTokenScopeGuard } from '@/common/guards/client-token-scope.guard';
+import { AllowsClientToken } from '@/common/decorators/allows-client-token.decorator';
 
 @Controller('client')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ClientTokenOrSessionGuard)
 export class ClientController {
   constructor(
     private readonly service: ClientService,
@@ -90,10 +92,15 @@ export class ClientController {
   }
 
   /**
-   * (Partially) Update a client
+   * (Partially) Update a client. This is the only route that accepts a
+   * Client Access Token (`x-client-token`); the scope guard restricts
+   * token-authenticated requests to the owning client and to the
+   * `enabled` / `scenarios` body fields.
    */
   @Patch('/:id')
   @UsePipes(ValidationPipe)
+  @AllowsClientToken()
+  @UseGuards(ClientTokenScopeGuard)
   async update(
     @Param('id') id: string,
     @Body() body: PatchClientDto,
@@ -120,5 +127,26 @@ export class ClientController {
     await this.service.delete(+id);
     await this.proxyService.clearClientsCache();
     return { message: 'Client deleted' };
+  }
+
+  /**
+   * Generate (or regenerate) a Client Access Token. The plaintext is returned
+   * once and discarded — only the sha-256 hash is persisted.
+   */
+  @Post('/:id/token')
+  async generateToken(@Param('id') id: string): Promise<{ token: string }> {
+    const token = await this.service.generateToken(+id);
+    await this.proxyService.clearClientsCache();
+    return { token };
+  }
+
+  /**
+   * Revoke a Client Access Token.
+   */
+  @Delete('/:id/token')
+  async revokeToken(@Param('id') id: string): Promise<ResponseMessage> {
+    await this.service.revokeToken(+id);
+    await this.proxyService.clearClientsCache();
+    return { message: 'Token revoked' };
   }
 }

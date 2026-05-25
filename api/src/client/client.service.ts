@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { ClientsRepository } from '@/common/repositories/clients.repository';
 import { CreateClientDto, PatchClientDto } from './dtos';
 import { isEmptyCondition } from '@/common/utils/helpers';
@@ -84,5 +85,25 @@ export class ClientService {
 
   async getAll() {
     return this.clientsRepository.getAll();
+  }
+
+  async generateToken(id: number) {
+    const client = await this.clientsRepository.getById(id);
+    if (!client) {
+      throw new NotFoundException(`Client with id [${id}] was not found.`);
+    }
+
+    const token = `tmck_${randomBytes(32).toString('base64url')}`;
+    await this.clientsRepository.setToken(id, token);
+    return token;
+  }
+
+  async revokeToken(id: number) {
+    const client = await this.clientsRepository.getById(id);
+    if (!client) {
+      throw new NotFoundException(`Client with id [${id}] was not found.`);
+    }
+
+    await this.clientsRepository.clearToken(id);
   }
 }

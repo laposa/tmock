@@ -9,10 +9,32 @@ clientsStore.load();
 scenariosStore.load();
 
 const clients = computed(() => clientsStore.list ?? []);
+const generatingTokenFor = ref<string | null>(null);
 
 function openClientEdit(type: DialogType, client: Client) {
   clientsStore.setDetail(client);
   uiStore.openDialog(type);
+}
+
+async function generateToken(client: Client) {
+  if (generatingTokenFor.value) return;
+  generatingTokenFor.value = client.id;
+  await snackbarWrapper(
+    { errorTitle: `Failed to generate token for ${client.name}` },
+    async () => {
+      await clientsApi.generateToken(client.id);
+      await clientsStore.load();
+      const refreshed = clientsStore.list?.find((c) => c.id === client.id) ?? client;
+      clientsStore.setDetail(refreshed);
+      uiStore.openDialog('client-token');
+    },
+  );
+  generatingTokenFor.value = null;
+}
+
+function viewToken(client: Client) {
+  clientsStore.setDetail(client);
+  uiStore.openDialog('client-token');
 }
 
 async function toggleEnabled(client: Client, enabled: boolean) {
@@ -59,6 +81,7 @@ async function disableScenario(client: Client, scenarioId: number) {
           <th>Name</th>
           <th>Conditions</th>
           <th>Scenarios</th>
+          <th>Tokens</th>
         </tr>
       </thead>
 
@@ -94,6 +117,16 @@ async function disableScenario(client: Client, scenarioId: number) {
                 <v-icon class="client-scenarios-add" color="white" icon="mdi-plus-circle"> </v-icon>
               </button>
             </div>
+          </td>
+          <td>
+            <span v-if="client.token" class="edit" @click="viewToken(client)">View</span>
+            <button
+              v-else
+              :disabled="generatingTokenFor === client.id"
+              @click="generateToken(client)"
+            >
+              <v-icon class="client-scenarios-add" color="white" icon="mdi-plus-circle"></v-icon>
+            </button>
           </td>
         </tr>
       </tbody>

@@ -4,16 +4,25 @@ const name = ref('');
 const clientsStore = useClientsStore();
 const clientsApi = useClientsApi();
 const uiStore = useUiStore();
+const { snackbarWrapper } = useSnackbarWrapper();
 
 const isLoading = ref(false);
 
 async function addNewClient() {
   isLoading.value = true;
-  await clientsApi.create(name.value);
-  await clientsStore.load();
-  uiStore.closeDialog('client-add');
-  name.value = '';
-  isLoading.value = false;
+  try {
+    await snackbarWrapper(
+      { errorTitle: `Failed to create client ${name.value}` },
+      async () => {
+        await clientsApi.create(name.value);
+        await clientsStore.load();
+        uiStore.closeDialog('client-add');
+        name.value = '';
+      },
+    );
+  } finally {
+    isLoading.value = false;
+  }
 }
 </script>
 

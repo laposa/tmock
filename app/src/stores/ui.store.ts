@@ -3,6 +3,7 @@ export type DialogType =
   'client-edit' |
   'client-conditions' |
   'client-scenarios' |
+  'client-token' |
   'scenario-modal' |
   'confirmation-dialog' |
   'user-add' |

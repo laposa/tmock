@@ -13,11 +13,11 @@ import {
 import { ServiceService } from './service.service';
 import { ResponseMessage } from '@/common/dtos/ResponseMessage.dto';
 import { CreateServiceDto, PatchServiceDto } from './dtos';
-import { ApiKeyGuard } from '@/common/guards/api-key.guard';
+import { SessionGuard } from '@/common/guards/session.guard';
 import { ServiceDto } from 'database/schema';
 
 @Controller('service')
-@UseGuards(ApiKeyGuard)
+@UseGuards(SessionGuard)
 export class ServiceController {
   constructor(private readonly service: ServiceService) {}
 

@@ -15,6 +15,7 @@ declare module 'vue' {
     ClientEdit: typeof import('./src/components/client/ClientEdit.vue')['default']
     ClientList: typeof import('./src/components/client/ClientList.vue')['default']
     ClientScenariosEdit: typeof import('./src/components/client/ClientScenariosEdit.vue')['default']
+    ClientToken: typeof import('./src/components/client/ClientToken.vue')['default']
     CodeEditor: typeof import('./src/components/ui/CodeEditor.vue')['default']
     ConfirmationDialog: typeof import('./src/components/ui/ConfirmationDialog.vue')['default']
     MainNavigation: typeof import('./src/components/ui/MainNavigation.vue')['default']

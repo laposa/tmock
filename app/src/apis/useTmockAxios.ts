@@ -8,10 +8,6 @@ export const useTmockAxios = () => {
     withCredentials: true,
   });
 
-  if (config.apiKey) {
-    tmockApi.defaults.headers.common['apikey'] = config.apiKey;
-  }
-
   tmockApi.interceptors.request.use((reqConfig) => {
     const authStore = useAuthStore();
     if (authStore.csrfToken) {

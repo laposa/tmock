@@ -12,7 +12,7 @@ import { CreateClientDto, PatchClientDto } from '@/client/dtos';
 export class ClientsRepository {
   constructor(@InjectDb() private db: AppDatabase) {}
 
-  async getAll() {
+  async getAll(): Promise<ClientWithScenariosDto[]> {
     return (
       await this.db.query.clients.findMany({
         with: {
@@ -24,19 +24,17 @@ export class ClientsRepository {
         },
         orderBy: [asc(clients.id)],
       })
-    ).map((c) => {
-      return {
-        ...c,
-        scenarios: c.scenarios.map((s) => s.scenario),
-      } as ClientWithScenariosDto;
-    });
+    ).map((c) => ({
+      ...c,
+      scenarios: c.scenarios.map((s) => s.scenario),
+    }));
   }
 
   async disableAll() {
     await this.db.update(clients).set({ enabled: false });
   }
 
-  async getEnabled() {
+  async getEnabled(): Promise<ClientWithScenariosDto[]> {
     return (
       await this.db.query.clients.findMany({
         where: and(eq(clients.enabled, true), ne(clients.condition, {})),
@@ -49,13 +47,12 @@ export class ClientsRepository {
         },
         orderBy: [asc(clients.id)],
       })
-    ).map((c) => {
-      return {
-        ...c,
-        scenarios: c.scenarios.map((s) => s.scenario),
-      } as ClientWithScenariosDto;
-    });
+    ).map((c) => ({
+      ...c,
+      scenarios: c.scenarios.map((s) => s.scenario),
+    }));
   }
+
   async getByName(name: string) {
     return this.db.query.clients.findFirst({
       where: eq(clients.name, name),
@@ -65,6 +62,26 @@ export class ClientsRepository {
   async getById(id: number) {
     return this.db.query.clients.findFirst({
       where: eq(clients.id, id),
+    });
+  }
+
+  async setToken(id: number, token: string) {
+    return this.db
+      .update(clients)
+      .set({ token })
+      .where(eq(clients.id, id));
+  }
+
+  async clearToken(id: number) {
+    return this.db
+      .update(clients)
+      .set({ token: null })
+      .where(eq(clients.id, id));
+  }
+
+  async getByToken(token: string) {
+    return this.db.query.clients.findFirst({
+      where: eq(clients.token, token),
     });
   }
 

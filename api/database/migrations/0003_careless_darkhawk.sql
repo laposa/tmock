@@ -1,0 +1,1 @@
+ALTER TABLE "mp_clients" ADD COLUMN "token" varchar;
