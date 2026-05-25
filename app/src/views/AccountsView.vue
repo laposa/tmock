@@ -146,6 +146,7 @@ onMounted(loadUsers);
       <v-switch v-model="newAdmin" label="Admin" color="indigo" />
 
       <template v-slot:actions>
+        <v-btn @click="uiStore.closeDialog('user-add')">Close</v-btn>
         <v-btn
           color="indigo"
           :disabled="isAdding || !newName || !newEmail || !newPassword"
@@ -154,7 +155,6 @@ onMounted(loadUsers);
         >
           Create
         </v-btn>
-        <v-btn @click="uiStore.closeDialog('user-add')">Close</v-btn>
       </template>
     </ModalWindow>
 
@@ -166,6 +166,7 @@ onMounted(loadUsers);
       <v-switch v-model="editAdmin" label="Admin" color="indigo" />
 
       <template v-slot:actions>
+        <v-btn @click="uiStore.closeDialog('user-edit')">Close</v-btn>
         <v-btn
           color="indigo"
           :disabled="isSaving || !editName || !editEmail"
@@ -174,7 +175,6 @@ onMounted(loadUsers);
         >
           Save
         </v-btn>
-        <v-btn @click="uiStore.closeDialog('user-edit')">Close</v-btn>
       </template>
     </ModalWindow>
   </main>

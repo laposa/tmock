@@ -69,14 +69,14 @@ async function saveClient() {
           Delete
       </v-btn>
       <v-spacer></v-spacer>
-      <v-btn 
+      <v-btn @click="uiStore.closeDialog('client-edit')">Close</v-btn>
+      <v-btn
         :loading="isLoading"
         :disabled="isLoading"
         color="indigo"
         @click="saveClient()">
           Save
       </v-btn>
-      <v-btn @click="uiStore.closeDialog('client-edit')">Close</v-btn>
     </template>
 
     <ConfirmationDialog 

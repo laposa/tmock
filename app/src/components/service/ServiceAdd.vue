@@ -35,13 +35,13 @@ async function addNewService() {
       <v-text-field label="Path" v-model="path" required></v-text-field>
 
       <template v-slot:actions>
+        <v-btn @click="uiStore.closeDialog('service-add')">Close</v-btn>
         <v-btn
           color="indigo"
           :disabled="isLoading"
           :loading="isLoading"
           @click="addNewService()">
             Create</v-btn>
-        <v-btn @click="uiStore.closeDialog('service-add')">Close</v-btn>
       </template>
     </ModalWindow>
   </div>
