@@ -36,7 +36,7 @@
     "express-session": "^1.19.0",
     "helmet": "^8.0.0",
     "http-proxy-middleware": "^3.0.5",
-    "liquidjs": "^10.25.7",
+    "liquidjs": "^10.26.0",
     "lodash": "^4.18.1",
     "parse-headers": "^2.0.5",
     "pg": "^8.13.1",
