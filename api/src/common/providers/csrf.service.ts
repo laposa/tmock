@@ -1,6 +1,6 @@
+import { AppConfig, InjectConfig } from '@/app.config';
 import { Injectable } from '@nestjs/common';
 import { doubleCsrf } from 'csrf-csrf';
-import { AppConfig, InjectConfig } from '@/app.config';
 
 @Injectable()
 export class CsrfService {
@@ -21,6 +21,9 @@ export class CsrfService {
       getCsrfTokenFromRequest: (req) => req.headers['x-csrf-token'] as string,
       skipCsrfProtection: (req) => {
         const url = req.originalUrl || req.url;
+        if (req.headers['x-client-token']) {
+          return true;
+        }
         return url.startsWith('/api/auth/login') || url.startsWith('/api/proxy');
       },
     });
