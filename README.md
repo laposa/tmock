@@ -34,7 +34,8 @@ T-Mock is a powerful HTTP mock and proxy service designed for testing and develo
   - [Request Conditions](#request-conditions)
 - [Development](#development)
 - [Deployment](#deployment)
-- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
 
 ## Features
 
