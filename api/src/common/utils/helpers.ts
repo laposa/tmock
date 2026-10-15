@@ -41,7 +41,7 @@ export const evalClientConditions = (
   }
 
   if (condition.ip) {
-    return condition.ip.includes(getClientIp(req)) === bool;
+    return (condition.ip.trim() === getClientIp(req)) === bool;
   }
 
   if (condition.cidr) {
