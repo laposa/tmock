@@ -59,6 +59,11 @@ API using per-client access tokens.
    and the existing CI workflow are not modified. All Go code, backend and frontend, lives in one
    new top-level folder, `app-go/`. Deleting the legacy code is the last step after cutover.
 7. **Simple operations.** One container image, one process, one port, one PostgreSQL database.
+8. **Observable.** What the app does (requests, proxy decisions, logins, data changes, failures)
+   is logged as named, structured events through `log/slog`. When an OpenTelemetry collector is
+   configured with the standard `OTEL_*` variables, the events are exported to it over OTLP, so
+   tmock's logs sit next to the logs and traces of the system under test. A collector is optional;
+   without one, the console output is complete on its own. See §7.
 
 ## 4. Non-goals
 
@@ -120,7 +125,30 @@ Rules for Alpine use:
 - Alpine is optional at runtime: with JavaScript disabled, the pages still render and the forms
   still submit. Only the conveniences listed above are lost.
 
-## 7. Success criteria
+## 7. Decision: OpenTelemetry for log events — yes, without the SDK
+
+Teams running tmock already collect telemetry with OpenTelemetry, and when a test fails they want
+to see what tmock did (which client matched, which scenario mocked the response) next to the logs
+of the service under test. We therefore export tmock's log events as OpenTelemetry log records.
+
+How we do it follows principle 3 (standard library first, own code second, dependency last):
+
+- `log/slog` stays the only logging API in the code. Every log line is a slog record; notable ones
+  are **events** with a stable name and attributes that follow the OpenTelemetry semantic
+  conventions (spec §2.4.2).
+- Export is a small exporter of our own, OTLP over HTTP with JSON, built on `net/http` and
+  `encoding/json` (spec §2.4.5). The OpenTelemetry Go SDK would bring about ten modules plus gRPC
+  and protobuf for one feature, and its logs SDK is still pre-1.0. It is listed as considered and
+  rejected in spec §3.2.
+- Configuration uses the standard `OTEL_*` environment variables, so existing collector set-ups and
+  the OpenTelemetry Operator work as they are. Export is off until an endpoint is set.
+- An incoming W3C `traceparent` is attached to the records of that request, so tmock's events can
+  be found from a trace of the system under test. tmock does not create spans itself. Traces and
+  metrics are "Later" (spec §14).
+- Telemetry never gets in the way of testing: logging never blocks or fails a request, and secrets
+  and bodies are never logged (spec §2.4.3).
+
+## 8. Success criteria
 
 The rewrite is done when all of the following hold:
 
@@ -131,11 +159,14 @@ The rewrite is done when all of the following hold:
    reviewed.
 4. A single image built from `app-go/Dockerfile` runs in a staging environment, test automation
    runs green against it, and the team signs off.
-5. `app-go/go.mod` directly requires only `maragu.dev/gomponents` and `github.com/jackc/pgx/v5`;
+5. With `OTEL_EXPORTER_OTLP_ENDPOINT` set in staging, the spec §2.4.2 events arrive in the
+   team's log backend, and a proxy request can be found by the `traceparent` of the test that sent
+   it.
+6. `app-go/go.mod` directly requires only `maragu.dev/gomponents` and `github.com/jackc/pgx/v5`;
    only the UI packages import gomponents and only `internal/db` imports pgx, apart from any
    further exception recorded in spec §3.2.
 
-## 8. Risks and how we handle them
+## 9. Risks and how we handle them
 
 | Risk | Mitigation |
 |---|---|
@@ -144,4 +175,5 @@ The rewrite is done when all of the following hold:
 | Liquid edge cases differ from LiquidJS. | Template syntax is checked on save and at import; hand-checked test cases cover the filters people use. |
 | Users must recreate their accounts. | There are only a few dashboard users; admins recreate them at cutover (spec §13.3). |
 | Several replicas have separate caches. | Every change invalidates the local cache immediately; other replicas catch up within `CACHE_TTL`, which should be short when running more than one replica (spec §7.2). |
+| The in-house OTLP exporter drifts from what collectors expect. | It writes only the stable OTLP/HTTP JSON fields, is tested against golden JSON and a real collector (spec I01), and sits behind slog in one package, so it can be swapped for the SDK through a §3.2 decision without touching any caller. |
 | A dependency (pgx) brings its own updates and transitive modules. | It is confined to `internal/db` behind `database/sql`, so it can be upgraded or replaced without touching the rest of the code. Upgrades are reviewed like any other change (spec §3.2). |

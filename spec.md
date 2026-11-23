@@ -171,7 +171,9 @@ app-go/
 └── internal/
     │   # ── backend (standard library only, except pgx in internal/db; enforced by archtest) ──
     ├── config/               # env + .env loading, validation
-    ├── logx/                 # slog setup, request-log middleware
+    ├── logx/                 # slog setup, fan-out handler, event names and attribute keys,
+    │   │                     # request-log middleware, W3C trace-context parsing (§2.4)
+    │   └── otlp/             # OTLP/HTTP+JSON log exporter: mapping, batching, retry (§2.4.5)
     ├── password/             # PBKDF2 password hashing (§9.1)
     ├── db/                   # *sql.DB setup via pgx stdlib (§3.3), migration runner,
     │                         # migrations/*.sql (embedded), SQLSTATE → typed errors
@@ -197,6 +199,149 @@ app-go/
         └── pages/            # login, clients, services, scenarios, accounts, myaccount
 ```
 
+### 2.4 Logging, log events and OpenTelemetry
+
+All logging goes through `log/slog`. Every record is written to the console and, when configured,
+exported as an **OpenTelemetry log record** over OTLP to a collector (OpenTelemetry Collector,
+Grafana Alloy, Datadog Agent, …). The exporter is a small package of our own
+(`internal/logx/otlp`), written against the standard library. The OpenTelemetry Go SDK is **not**
+used (§3.2, "Considered and rejected").
+
+#### 2.4.1 Pipeline
+
+```
+ slog.Logger ──► logx fan-out handler ──┬──► console handler (text | json, stdout)  — always
+   (ctx-aware calls)    │ LOG_LEVEL     └──► otlp handler ──► bounded queue ──► batch exporter
+                        │                                       (drops when full)     │ POST /v1/logs
+                        └── adds trace context from ctx                                ▼
+                                                                         OTLP/HTTP collector (JSON)
+```
+
+- `internal/logx` builds one `slog.Handler` that fans every record out to the console handler and,
+  if export is enabled (§2.4.6), to the OTLP handler. `LOG_LEVEL` applies to both sinks.
+- `slog.SetDefault` is called once at start-up, so third-party and stdlib logs (for example
+  `http.Server.ErrorLog`, bridged with `slog.NewLogLogger`) take the same path.
+- Code that logs inside a request MUST use the context-aware calls (`slog.InfoContext`,
+  `logger.LogAttrs(ctx, …)`) so the trace context reaches the record (§2.4.4).
+- Logging never blocks a request and never fails one. If the collector is slow or down, records
+  are queued and, once the queue is full, dropped (§2.4.5).
+- The exporter's own diagnostics (export failures, dropped records) are written to the **console
+  handler only**, never back into the OTLP pipeline, so a broken collector cannot cause a loop.
+
+#### 2.4.2 Log events
+
+Notable things the application does are logged as **events**: records with a stable name in the
+`event.name` attribute (which the exporter also writes to the OTLP `eventName` field), a fixed
+level and a fixed set of attributes. The message stays human-readable, so the console output is
+still useful on its own; dashboards and alerts are built on the event name and attributes, never
+on the message text.
+
+Event names and attribute keys are constants in `internal/logx` (for example
+`logx.EventProxyRequest`, `logx.AttrClientAddress`); packages MUST NOT spell them as string
+literals. Attribute keys follow the OpenTelemetry semantic conventions where one exists
+(`http.request.method`, `url.path`, `http.response.status_code`, `client.address`,
+`server.address`, `user.id`, `error.type`, `exception.*`), and use the `tmock.` prefix otherwise.
+Durations are logged in milliseconds as integers (`tmock.duration_ms`).
+
+| Event (`event.name`) | Level | When | Attributes (besides the common ones) | Added in |
+|---|---|---|---|---|
+| `tmock.server.started` | info | the listener is open | `server.port`, `tmock.env` | I01 |
+| `tmock.server.stopped` | info | graceful shutdown finished | `tmock.duration_ms` (drain time), `tmock.shutdown.forced` | I01 |
+| `tmock.http.request` | info; debug for `/status` and `/api/status` | each API and UI request (§9.6) | `http.request.method`, `http.route`, `url.path`, `url.query`, `http.response.status_code`, `client.address`, `tmock.duration_ms`, `user.id` (if a session is present) | I01 |
+| `tmock.http.panic` | error | a handler panicked; `500` returned | `http.request.method`, `url.path`, `exception.type`, `exception.message`, `exception.stacktrace` | I01 |
+| `tmock.db.migration.applied` | info | each applied migration | `tmock.migration.version`, `tmock.migration.name`, `tmock.duration_ms` | I02 |
+| `tmock.user.seeded` | info | `tmock seed` created the admin | `user.id` | I02 |
+| `tmock.auth.login.succeeded` | info | login | `user.id`, `client.address` | I04 |
+| `tmock.auth.login.failed` | warn | wrong email or password | `client.address` (never the email or password) | I04 |
+| `tmock.auth.logout` | info | logout | `user.id` | I04 |
+| `tmock.session.swept` | debug | hourly sweep (§9.2) | `tmock.sessions.deleted` | I04 |
+| `tmock.entity.changed` | info | a service, scenario, client or user was created, updated or deleted, or a client token was generated or revoked | `tmock.entity.type`, `tmock.entity.id`, `tmock.entity.action` (`create` \| `update` \| `delete` \| `token-generate` \| `token-revoke` \| `disable-all`), `tmock.actor` (`user` \| `client-token`), `user.id` or `tmock.client.id` | I05–I08 |
+| `tmock.catalog.rebuilt` | debug | a new snapshot is in place (§7.2) | `tmock.duration_ms`, `tmock.catalog.services`, `tmock.catalog.scenarios`, `tmock.catalog.clients` | I09 |
+| `tmock.catalog.rebuild_failed` | error | the rebuild failed; the old snapshot stays | `error.type`, `exception.message` | I09 |
+| `tmock.proxy.request` | info | each proxy request (§7.9) | `http.request.method`, `url.path`, `url.query`, `http.response.status_code`, `client.address`, `tmock.service`, `server.address` (upstream host), `tmock.duration_ms`, `http.response.body.size` (when known); from I10 also `tmock.client`, `tmock.scenario`, `tmock.mocked` (array of `status`, `headers`, `body`), `tmock.proxy_skipped` | I09, I10 |
+| `tmock.proxy.upstream_failed` | error | the upstream call failed; `502` returned | `tmock.service`, `server.address`, `error.type`, `exception.message` | I09 |
+| `tmock.template.render_failed` | warn | a template failed at runtime and the fallback was used (§8.1) | `tmock.scenario`, `exception.message` | I12 |
+| `tmock.import.issue` | warn | one item reported by the legacy import (§13.1) | `tmock.entity.type`, `tmock.legacy.id`, `tmock.import.reason` | I15 |
+| `tmock.import.finished` | info | `import-legacy` finished | `tmock.import.dry_run`, `tmock.import.services`, `tmock.import.scenarios`, `tmock.import.clients`, `tmock.import.issues` | I15 |
+
+`tmock.entity.changed` makes changes traceable in the log backend. It is **not** an audit log: it is
+not stored by tmock and carries no before/after values (an audit log stays in §14).
+
+#### 2.4.3 What is never logged
+
+Passwords and password hashes, session cookie values and session ids, client tokens, the
+`X-Client-Token`, `Authorization`, `Cookie`, `Set-Cookie` and `Apikey` headers, `SERVICES_API_KEY`,
+`SESSION_SECRET`, `OTEL_EXPORTER_OTLP_HEADERS`, database passwords (the DSN is logged with the
+password masked), and request or response bodies. Header values in general are not logged. Login
+failures do not record the email that was tried.
+
+A test in `internal/logx` runs a login, a token `PATCH` and a proxied request through a capturing
+handler and fails if any of these values appears in a record.
+
+#### 2.4.4 Trace context
+
+tmock does not create spans (tracing is in §14), but it keeps log records correlatable with the
+traces of the system under test:
+
+- The request-log middleware parses an incoming W3C `traceparent` header (version `00`, non-zero
+  trace and parent ids; anything else is ignored) and stores it in the request context.
+- Every record logged with that context carries it: the OTLP handler sets `traceId`, `spanId` and
+  `flags`, and the console handler adds `trace_id` and `span_id` attributes.
+- `traceparent` and `tracestate` are forwarded to the upstream unchanged, like any other
+  end-to-end header (§7.7).
+
+#### 2.4.5 OTLP exporter (`internal/logx/otlp`)
+
+- **Protocol:** OTLP/HTTP with the JSON encoding (`Content-Type: application/json`), one
+  `POST` per batch of an `ExportLogsServiceRequest`. gRPC and `http/protobuf` are not supported;
+  every common collector accepts OTLP/HTTP JSON on port 4318. Only the stable OTLP JSON fields are
+  written.
+- **Resource:** `service.name` (from `OTEL_SERVICE_NAME`, default `tmock`), `service.version`
+  (from `runtime/debug.ReadBuildInfo`), `service.instance.id` (a random UUID per process),
+  `deployment.environment.name` (from `TMOCK_ENV`), plus `OTEL_RESOURCE_ATTRIBUTES`. The
+  instrumentation scope is `github.com/laposa/tmock/app-go`.
+- **Mapping** of a `slog.Record` to a `LogRecord`:
+
+  | slog | OTLP |
+  |---|---|
+  | `Time` | `timeUnixNano`; `observedTimeUnixNano` = time the handler saw it |
+  | `Level` | `severityNumber` = level + 9, clamped to 1–24 (DEBUG → 5, INFO → 9, WARN → 13, ERROR → 17); `severityText` = `slog.Level.String()` |
+  | `Message` | `body.stringValue` |
+  | `event.name` attribute | `eventName`, and kept as an attribute for collectors that predate the field |
+  | string / bool / float64 | `stringValue` / `boolValue` / `doubleValue` |
+  | int / int64 / uint64 | `intValue` (as a decimal string, per the OTLP JSON mapping) |
+  | `time.Time` | `stringValue`, RFC 3339 with nanoseconds |
+  | `time.Duration` | `intValue` in milliseconds (but prefer `tmock.duration_ms`) |
+  | `[]string`, `[]int64` | `arrayValue` |
+  | `error`, `fmt.Stringer`, anything else | `stringValue` via `fmt.Sprint` |
+  | `slog.Group` / `WithGroup` | keys flattened with `.` (`db.pool` + `open` → `db.pool.open`) |
+  | trace context (§2.4.4) | `traceId`, `spanId` (lower-case hex), `flags` |
+
+  String values longer than 8 KiB are truncated and get the suffix `…[truncated]`.
+- **Batching:** a bounded queue (`OTEL_BLRP_MAX_QUEUE_SIZE`) feeds one export goroutine. A batch
+  is sent when it reaches `OTEL_BLRP_MAX_EXPORT_BATCH_SIZE` records or `OTEL_BLRP_SCHEDULE_DELAY`
+  after its first record, whichever comes first. Only one export is in flight at a time. When the
+  queue is full, new records are dropped and counted; the count is reported on the console at
+  most once a minute (`tmock.otlp.dropped`, warn).
+- **Retry:** network errors and `429`, `502`, `503`, `504` are retried with exponential backoff
+  (1 s, 2 s, 4 s, … with jitter, honouring `Retry-After`) until `OTEL_BLRP_EXPORT_TIMEOUT` has
+  passed, then the batch is dropped and counted. Other `4xx`/`5xx` responses drop the batch
+  immediately. A `partialSuccess` with `rejectedLogRecords > 0` is reported on the console.
+  Each HTTP attempt is limited by `OTEL_EXPORTER_OTLP_TIMEOUT`.
+- **Transport:** its own `http.Client` (not the proxy's transport), HTTPS with the system roots,
+  optional gzip (`OTEL_EXPORTER_OTLP_COMPRESSION=gzip`, using `compress/gzip`), and the headers
+  from `OTEL_EXPORTER_OTLP_HEADERS` (for example an API key for a hosted backend).
+- **Shutdown:** after the HTTP server has drained, the exporter stops accepting records and
+  flushes the queue with a 5-second deadline. The short-lived subcommands (`migrate`, `seed`,
+  `import-legacy`) flush the same way before exiting, so their events are not lost.
+
+#### 2.4.6 Configuration
+
+Export uses the **standard OpenTelemetry environment variables**, so the usual collector set-up
+(and the Kubernetes OpenTelemetry Operator, which injects them) works without tmock-specific
+configuration. Only the subset in §4.2 is read; others are ignored. Export is **off** unless an
+endpoint is set; with export off, the app behaves exactly as with console logging alone.
+
 ---
 
 ## 3. Technology and dependency policy
@@ -214,6 +359,7 @@ app-go/
 | Sessions | PostgreSQL table `sessions` (§9.2) | the same session cookie and the same `internal/auth` |
 | CSRF | `http.CrossOriginProtection` (§9.3) | same |
 | Logging | `log/slog` | `log/slog` |
+| Telemetry export | own OTLP/HTTP+JSON log exporter in `internal/logx/otlp` (`net/http`, `encoding/json`, `compress/gzip`); §2.4 | same pipeline |
 | Config | `os.Getenv` + small `.env` loader | same |
 | Time zones | `time` + `import _ "time/tzdata"` so that `TZ` works in minimal images | — |
 | HTML | — | `maragu.dev/gomponents` |
@@ -238,6 +384,12 @@ their own, but are reviewed when the approved module is upgraded.
 
 Dev-only tools (`gofmt`, `go vet`, `staticcheck` installed by the developer) are not dependencies
 and MUST NOT appear in `go.mod`.
+
+**Considered and rejected**
+
+| Module | Reason |
+|---|---|
+| OpenTelemetry Go SDK (`go.opentelemetry.io/otel`, `otel/sdk/log`, `otel/exporters/otlp/otlplog/...`, `contrib/bridges/otelslog`) | Exporting logs needs about ten modules plus, for the OTLP exporters, `google.golang.org/grpc` and `google.golang.org/protobuf`, and the logs SDK is still pre-1.0. tmock only needs to ship slog records to a collector; an OTLP/HTTP JSON exporter is a few hundred lines of standard-library code that we can test fully (§2.4.5). Revisit if tracing or metrics (§14) are taken up. |
 
 ### 3.3 PostgreSQL driver: pgx via `database/sql`
 
@@ -296,7 +448,21 @@ configuration can be reused with few edits.
 | `PROXY_UPSTREAM_TIMEOUT` | `30s` | Timeout for upstream requests (Go duration) |
 | `PROXY_CORS_ALLOWED_ORIGINS` | *(empty = reflect any origin)* | Comma-separated allow-list for proxy CORS (§9.5) |
 | `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error` |
-| `LOG_FORMAT` | `text` | `text` \| `json` |
+| `LOG_FORMAT` | `text` | `text` \| `json` (console output; OTLP export is independent of it) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Base URL of an OTLP/HTTP collector (e.g. `http://otel-collector:4318`); `/v1/logs` is appended. Setting it (or the next variable) turns log export on (§2.4) |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | — | Full logs URL, used as is; wins over the base endpoint |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | `http/json` | Only `http/json` is supported; any other value stops the process at start-up |
+| `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_LOGS_HEADERS` | — | `key=value,key=value` (values URL-encoded) sent with every export; never logged |
+| `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_EXPORTER_OTLP_LOGS_TIMEOUT` | `10000` | Per-request timeout in milliseconds |
+| `OTEL_EXPORTER_OTLP_COMPRESSION`, `OTEL_EXPORTER_OTLP_LOGS_COMPRESSION` | `none` | `none` \| `gzip` |
+| `OTEL_SERVICE_NAME` | `tmock` | `service.name` resource attribute |
+| `OTEL_RESOURCE_ATTRIBUTES` | — | Extra resource attributes, `key=value,…` |
+| `OTEL_LOGS_EXPORTER` | `otlp` | `otlp` \| `none` (`none` turns export off even when an endpoint is set) |
+| `OTEL_SDK_DISABLED` | `false` | `true` turns export off |
+| `OTEL_BLRP_SCHEDULE_DELAY` | `1000` | Max delay in ms before a batch is sent |
+| `OTEL_BLRP_MAX_QUEUE_SIZE` | `2048` | Records buffered before new ones are dropped |
+| `OTEL_BLRP_MAX_EXPORT_BATCH_SIZE` | `512` | Records per export request (must be ≤ the queue size) |
+| `OTEL_BLRP_EXPORT_TIMEOUT` | `30000` | Total time in ms for one batch, including retries |
 | `MIGRATE_ON_START` | `false` | Run migrations before serving |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | `Admin`, —, — | Used by `tmock seed` only; email and password required |
 
@@ -717,6 +883,10 @@ One line per proxy request at level `info`:
 `mocked:` lists `status`, `headers` and `body`, but only those the scenario defines. Sizes are
 human-readable (`0B`, `512B`, `1.5KB`, `2MB`).
 
+This line is the message of the `tmock.proxy.request` event; the same data is attached as
+structured attributes (§2.4.2). An upstream failure additionally logs
+`tmock.proxy.upstream_failed` with the error.
+
 ---
 
 ## 8. Response templating (Liquid subset)
@@ -833,6 +1003,8 @@ CSP that allows the CDN.
 
 One line per API and UI request: `<ip> <METHOD> <url> <status> <ms>ms`, through `slog`.
 `/api/status` and `/status` are logged at level `debug`, so health checks don't flood the log.
+The line is the message of the `tmock.http.request` event (§2.4.2), with the same data as
+attributes. Proxy requests are logged by the proxy instead (§7.9), not twice.
 
 ---
 
@@ -1011,10 +1183,10 @@ at laptop widths; phone layout is a nice-to-have.
 
 | Level | Where | What | Runs |
 |---|---|---|---|
-| Unit | every package | conditions, expr, liquid, password hashing, CIDR/IP, catalog, Optional[T], validation messages, `internal/app` use cases, condition-builder tree ops, view rendering, import boundary (`internal/archtest`) | `go test ./...` (always) |
+| Unit | every package | conditions, expr, liquid, password hashing, CIDR/IP, catalog, Optional[T], validation messages, `internal/app` use cases, condition-builder tree ops, view rendering, import boundary (`internal/archtest`), slog → OTLP mapping, batching, retry and the never-logged list (§2.4) | `go test ./...` (always) |
 | Handler | `internal/api`, `internal/proxy`, `internal/web` | `httptest` against handlers, with a fake store and a fake upstream (`httptest.Server`) | `go test ./...` (always) |
 | DB integration | `internal/db`, `internal/store`, `internal/legacyimport` | real PostgreSQL from `compose.yaml` | when `TMOCK_TEST_DATABASE_URL` is set (`make test-db`); otherwise skipped with a message |
-| End-to-end smoke | `app-go/e2e` | the binary + test DB: log in through the UI endpoints, create a service, a scenario and a client, assign them, call the proxy, check the `x-tmock-*` headers | when `TMOCK_TEST_DATABASE_URL` is set |
+| End-to-end smoke | `app-go/e2e` | the binary + test DB: log in through the UI endpoints, create a service, a scenario and a client, assign them, call the proxy, check the `x-tmock-*` headers; with `OTEL_EXPORTER_OTLP_ENDPOINT` pointing at an in-test fake collector, check that the `tmock.proxy.request` event arrives with the request's `traceparent` trace id | when `TMOCK_TEST_DATABASE_URL` is set |
 | Fuzz | `internal/expr`, `internal/liquid`, `internal/condition` | parsers never panic | `go test -fuzz` (manual, per iteration that touches them) |
 | Manual | issue checklist | click-through of the §10.3 items for the iteration | per iteration |
 
@@ -1035,6 +1207,7 @@ make db-up            # PostgreSQL in Docker
 make test             # unit + handler tests
 make test-db          # DB integration + e2e
 make run              # migrate, seed (from .env) and serve on :3000 (API + UI)
+make otel-up          # optional: local OpenTelemetry Collector on :4318 that prints received logs
 ```
 
 ---
@@ -1063,6 +1236,7 @@ a compatibility commitment.
 | Config | `NODE_ENV` | `TMOCK_ENV` |
 | Body editor | CodeMirror with highlighting | Plain textarea with "Format JSON" |
 | Proxy CORS | `CORS_*` reflection on all routes | Proxy only, with an optional allow-list |
+| Logs | Unstructured console lines | Console lines plus named, structured events (§2.4.2); optional OTLP export to an OpenTelemetry collector via the standard `OTEL_*` variables |
 
 ---
 
@@ -1140,6 +1314,8 @@ until the legacy app is deleted.
 - Request data in templates (`{{ request.body.x }}`).
 - Upsert endpoints for scenarios and clients.
 - Scenario import/export (JSON files), audit log, metrics endpoint.
+- OpenTelemetry traces and metrics (spans for proxy requests with `traceparent` injection upstream;
+  request and upstream latency histograms). Logs are exported from I01 (§2.4).
 - Syntax highlighting in the body editor.
 - Shared cache invalidation between replicas (for example `LISTEN/NOTIFY`).
 - API keys for automation that needs more than the client-token endpoints.
@@ -1156,6 +1332,8 @@ until the legacy app is deleted.
       unless it is recorded in §3.2.
 - [ ] `api/`, `app/`, the root `Dockerfile` and `build.yaml` are unchanged.
 - [ ] The "run & verify" section of `app-go/README.md` is updated.
+- [ ] The log events §2.4.2 lists for this iteration are emitted, with a test per event that
+      checks its name, level and attributes.
 - [ ] The issue's **Verify locally** checklist has been performed, and its results noted in the
       issue.
 - [ ] Any finding that contradicts this spec has been fixed in `spec.md`, in the same PR.
@@ -1189,8 +1367,10 @@ Each block below is ready to paste as a GitHub issue. The title is the heading.
   release) and `alpinejs` CSP 3.x into `app-go/static/vendor/`, with `VERSIONS`
   (version, URL, SHA-256); a `make vendor-js` target that re-downloads and verifies them.
 - `internal/archtest` with the import-boundary rule and allow-list (§1.3).
-- `app-go/compose.yaml` (PostgreSQL 17, persistent volume, health check); Makefile; README;
-  `.gitignore` entries.
+- `app-go/compose.yaml` (PostgreSQL 17, persistent volume, health check, and an
+  `otel-collector` service under the `otel` profile: `otel/opentelemetry-collector` with a pinned
+  tag, an OTLP/HTTP receiver on `:4318` and the `debug` exporter, configured in
+  `app-go/dev/otelcol.yaml`); Makefile (including `otel-up`); README; `.gitignore` entries.
 
 **Verify locally**
 - [ ] `make test` passes, including the import-boundary test (temporarily importing gomponents
@@ -1212,7 +1392,11 @@ Each block below is ready to paste as a GitHub issue. The title is the heading.
 - `internal/config`: every variable in §4.2, the `.env` loader, strict boolean parsing,
   validation with clear start-up errors, `SESSION_SECRET` required in production,
   `SERVICES_UPSTREAM_OVERRIDES` parsing, building the DSN.
-- `internal/logx`: slog in text or JSON; request-log middleware (§9.6).
+- `internal/logx`: slog in text or JSON; the fan-out handler, event-name and attribute-key
+  constants, `traceparent` parsing and the request-log middleware (§2.4.1–§2.4.4, §9.6); the
+  I01 events of §2.4.2.
+- `internal/logx/otlp`: the OTLP/HTTP JSON exporter (§2.4.5) and the `OTEL_*` variables (§4.2),
+  flushed on shutdown.
 - Graceful shutdown on SIGINT/SIGTERM (drain with a timeout); panic recovery → `500` JSON (§6.2).
 
 **Verify locally**
@@ -1220,6 +1404,16 @@ Each block below is ready to paste as a GitHub issue. The title is the heading.
 - [ ] Starting with `TMOCK_ENV=production` and no `SESSION_SECRET` exits with a clear error.
 - [ ] Health checks appear only at `LOG_LEVEL=debug`.
 - [ ] Ctrl-C shuts down cleanly while a slow request completes.
+- [ ] Exporter tests against an `httptest` collector: golden JSON for the mapping (every attribute
+      type, groups, severities, trace context, resource); batching by size and by delay and queue
+      overflow (with `synctest`); retry on `503` and `Retry-After`, no retry on `400`; gzip;
+      `partialSuccess`; flush on shutdown.
+- [ ] `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` or a malformed `OTEL_EXPORTER_OTLP_HEADERS` stops start-up
+      with a clear error.
+- [ ] `make otel-up` and `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 make run`:
+      `curl -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' localhost:3000/api/status`
+      at `LOG_LEVEL=debug` shows a `tmock.http.request` record with that trace id in the collector
+      output. Stopping the collector doesn't slow requests; the console reports the failed exports.
 
 **Depends on:** I00
 
@@ -1371,7 +1565,7 @@ the edit modal until I08 adds the builder.
 - Routing and service lookup (§7.1); the catalog snapshot, TTL, single-flight rebuild,
   invalidation from `internal/app`, and `DISABLE_CACHE` (§7.2).
 - Upstream forwarding (§7.7) and passthrough responses (§7.8, no-scenario branch), streaming, `502`
-  on failure, and the log line (§7.9).
+  on failure, and the log line and events (§7.9, §2.4.2).
 - `cmd/echo-upstream`: a dev server that echoes the method, path, headers and body as JSON,
   optionally gzip-compressed, with configurable delay and status.
 
@@ -1518,7 +1712,8 @@ the UI; README "run & verify" and configuration reference.
 - `app-go/Dockerfile` (§13.2); the `app-go/e2e` smoke test (§11.1); an optional
   `.github/workflows/build-go.yaml` (§13.2, needs approval).
 - Deployment and migration guide in `app-go/README.md`: environment variables, migrations, the
-  cutover procedure (§13.3), the multi-replica cache note (§7.2), and the user-facing changes
+  cutover procedure (§13.3), the multi-replica cache note (§7.2), log export to an
+  OpenTelemetry collector (§2.4, with an example collector config), and the user-facing changes
   (§12).
 
 **Verify locally**
