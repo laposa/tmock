@@ -206,7 +206,11 @@ func TestServeDrainsOpenRequests(t *testing.T) {
 }
 
 func TestServeForcesShutdownAfterDrainTimeout(t *testing.T) {
-	stuck := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	started := make(chan struct{})
+	stuck := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	})
 	ctx, cancel := context.WithCancel(context.Background())
 	url, logs, res := startServe(t, ctx, stuck, 50*time.Millisecond)
 	go func() {
@@ -214,7 +218,7 @@ func TestServeForcesShutdownAfterDrainTimeout(t *testing.T) {
 			resp.Body.Close()
 		}
 	}()
-	time.Sleep(50 * time.Millisecond) // let the request arrive
+	<-started // the request is running
 	cancel()
 	select {
 	case <-res.done:
