@@ -1,0 +1,9 @@
+# Vendored JavaScript, embedded in the binary. See app-go/README.md, "Vendored JavaScript".
+#
+# `make vendor-js` downloads every URL below and fails unless the file's SHA-256 matches.
+# The test in app-go/static checks the committed files against these checksums.
+#
+# file                          version  sha256                                                            url
+htmx-4.0.2.min.js               4.0.2    fd25ba3fe5e44768756f23862a6daa4f928192199a121e825e882e719bc8aabd  https://cdn.jsdelivr.net/npm/htmx.org@4.0.2/dist/htmx.min.js
+hx-alpine-compat-4.0.2.js       4.0.2    0984507114aaf26a4461dc74173cd0e1977a971ab8a33843042e683ab871f69a  https://cdn.jsdelivr.net/npm/htmx.org@4.0.2/dist/ext/hx-alpine-compat.js
+alpinejs-csp-3.17.5.min.js      3.17.5   48c170c92032e527cbae71b8ce75cf1f96ca06fa869a6120ef0fe438d8e92c36  https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js

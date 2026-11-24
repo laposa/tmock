@@ -1,0 +1,17 @@
+# OpenTelemetry Collector for local development (spec §2.4). It accepts OTLP over HTTP
+# on :4318 and prints every log record it receives. Watch it with `make otel-logs`.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [debug]

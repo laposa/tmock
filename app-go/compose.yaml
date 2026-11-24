@@ -1,0 +1,37 @@
+# Local services for developing and testing app-go. See README.md.
+#
+#   make db-up     PostgreSQL 17 on localhost:5432 (user, password and database: tmock)
+#   make otel-up   OpenTelemetry Collector on localhost:4318 that prints the logs it receives
+#
+# Ports are bound to localhost only. Override the host ports with TMOCK_DB_PORT and
+# TMOCK_OTEL_PORT if they are already taken.
+
+name: tmock-go
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: tmock
+      POSTGRES_PASSWORD: tmock
+      POSTGRES_DB: tmock
+    ports:
+      - "127.0.0.1:${TMOCK_DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tmock -d tmock"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  otel-collector:
+    profiles: [otel]
+    image: otel/opentelemetry-collector:0.165.0
+    volumes:
+      - ./dev/otelcol.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:${TMOCK_OTEL_PORT:-4318}:4318" # OTLP/HTTP
+
+volumes:
+  pgdata:

@@ -1,0 +1,16 @@
+# Build output
+/bin/
+
+# Local configuration (may hold secrets)
+.env
+.env.*
+!.env.example
+
+# Test and profiling output
+*.test
+*.out
+*.prof
+coverage.*
+
+# Temporary files from make vendor-js
+static/vendor/.vendorjs-*
