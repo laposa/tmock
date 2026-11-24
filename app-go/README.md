@@ -4,8 +4,9 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I00** (scaffolding). The binary serves the health check and a
-  "coming soon" page. Progress is tracked in spec §16.
+- **Status:** iteration **I01** (configuration, logging, lifecycle). The binary serves the
+  health check and a "coming soon" page, logs every request, can export its logs over OTLP,
+  and shuts down gracefully. Progress is tracked in spec §16.
 
 ## Prerequisites
 
@@ -76,7 +77,7 @@ make otel-up   # optional: OpenTelemetry Collector on localhost:4318 (make otel-
 make db-down   # stop the containers; make db-reset also deletes the database volume
 ```
 
-What to check after I00:
+What to check after I01 (the I00 checks still apply):
 
 | Check | Expected |
 |---|---|
@@ -84,25 +85,70 @@ What to check after I00:
 | `curl localhost:3000/api/status` and `curl localhost:3000/status` | `{"status":"ok"}` |
 | Open <http://localhost:3000/> | the "Tmock — coming soon" page; the grey line reads "htmx 4.0.2 and Alpine 3.17.5 are running."; "Check API status" shows `{"status":"ok"}` |
 | Browser console | `tmock: htmx 4.0.2, Alpine 3.17.5`, no errors and no CSP violations |
+| `TMOCK_ENV=production make run` | exits at once: `SESSION_SECRET: is required when TMOCK_ENV=production` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL=grpc make run` | exits at once: `only http/json is supported` |
+| `make run`, then `curl localhost:3000/status` | no log line; with `LOG_LEVEL=debug make run`, a DEBUG `tmock.http.request` line |
+| Ctrl-C while running | `shutting down…` then `tmock stopped` (`tmock.shutdown.forced=false`); a second Ctrl-C exits at once |
 | `make db-up`, then `PGPASSWORD=tmock psql -h localhost -U tmock -d tmock -c 'select version()'` | PostgreSQL 17 |
-| `make otel-up`, then send a record (below) and `make otel-logs` | the collector prints `Body: Str(hello)` |
+| OTLP export (below) | the collector prints the `tmock.http.request` record with `Trace ID: 4bf92f3577b34da6a3ce929d0e0e4736` |
+
+Exporting logs to the local collector:
 
 ```bash
-curl -s -X POST localhost:4318/v1/logs -H 'Content-Type: application/json' -d \
-  '{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"severityText":"INFO","body":{"stringValue":"hello"}}]}]}]}'
+make otel-up
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 LOG_LEVEL=debug make run
+# in another terminal:
+curl -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' localhost:3000/api/status
+make otel-logs
 ```
 
+Stop the collector (`docker compose --profile otel stop otel-collector`) and requests stay
+fast; after about 30 s of retries the console reports `OTLP log export failed`.
+
 Ports already taken? `TMOCK_DB_PORT=5433 make db-up`, `TMOCK_OTEL_PORT=14318 make otel-up`.
+
+## Configuration
+
+All settings come from environment variables; a `.env` file in the working directory fills
+in anything not set in the environment. Start from the example:
+
+```bash
+cp .env.example .env
+```
+
+The full list with defaults is in spec §4.2. Invalid values stop start-up with a list of
+every problem found. Booleans accept only `true`, `false`, `1` and `0`; empty values count
+as unset.
+
+## Logging
+
+Logs go to stdout as text (`LOG_FORMAT=json` for JSON) at `LOG_LEVEL` (default `info`).
+Notable things are logged as **events** with a stable `event.name` attribute, such as
+`tmock.http.request` or `tmock.server.started` (spec §2.4.2); build dashboards on those, not on
+the message text. Health checks are logged at `debug`. An incoming W3C `traceparent` is
+attached to every record of that request (`trace_id`/`span_id` on the console).
+
+Setting `OTEL_EXPORTER_OTLP_ENDPOINT` also exports every record as an OpenTelemetry log
+record over OTLP/HTTP (JSON), using the standard `OTEL_*` variables. Logging never blocks a
+request: if the collector is slow or down, records queue up and are then dropped, and the
+exporter reports that on the console. On shutdown, open requests get 20 s to finish and the
+remaining logs 5 s to be sent.
 
 ## Layout
 
 See spec §2.3 for the full layout. What exists so far:
 
 ```
-cmd/tmock/            the binary; the only package that wires the UI into the server
+cmd/tmock/            the binary: config, logging set-up, lifecycle; the only package that
+                      wires the UI into the server
 dev/vendorjs/         `make vendor-js`: re-downloads and verifies vendored JavaScript
 dev/otelcol.yaml      collector config for `make otel-up`
 internal/api/         REST handlers (health check)
+internal/clientip/    the client-IP rule (spec §7.3)
+internal/config/      configuration and .env loading (spec §4)
+internal/httpx/       error responses and panic recovery
+internal/logx/        log handlers, event names, trace context, request log (spec §2.4)
+internal/logx/otlp/   OTLP/HTTP JSON log exporter
 internal/server/      assembles the http.Handler (backend; receives the UI from cmd/tmock)
 internal/web/         UI routes and the static file server
 internal/views/       gomponents views: layout shell and pages

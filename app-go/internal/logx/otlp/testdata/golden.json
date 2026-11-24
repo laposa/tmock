@@ -1,0 +1,268 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "deployment.environment.name",
+            "value": {
+              "stringValue": "test"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "tmock"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "v1.2.3"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {
+            "name": "github.com/laposa/tmock/app-go",
+            "version": "v1.2.3"
+          },
+          "logRecords": [
+            {
+              "timeUnixNano": "1795509000123456789",
+              "observedTimeUnixNano": "1795509000124456789",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "every value type"
+              },
+              "attributes": [
+                {
+                  "key": "app",
+                  "value": {
+                    "stringValue": "tmock"
+                  }
+                },
+                {
+                  "key": "req.id",
+                  "value": {
+                    "intValue": "7"
+                  }
+                },
+                {
+                  "key": "req.event.name",
+                  "value": {
+                    "stringValue": "tmock.test.event"
+                  }
+                },
+                {
+                  "key": "req.string",
+                  "value": {
+                    "stringValue": "text"
+                  }
+                },
+                {
+                  "key": "req.bool",
+                  "value": {
+                    "boolValue": true
+                  }
+                },
+                {
+                  "key": "req.false",
+                  "value": {
+                    "boolValue": false
+                  }
+                },
+                {
+                  "key": "req.int",
+                  "value": {
+                    "intValue": "-42"
+                  }
+                },
+                {
+                  "key": "req.uint",
+                  "value": {
+                    "intValue": "42"
+                  }
+                },
+                {
+                  "key": "req.huge",
+                  "value": {
+                    "stringValue": "18446744073709551615"
+                  }
+                },
+                {
+                  "key": "req.float",
+                  "value": {
+                    "doubleValue": 1.5
+                  }
+                },
+                {
+                  "key": "req.nan",
+                  "value": {
+                    "stringValue": "NaN"
+                  }
+                },
+                {
+                  "key": "req.time",
+                  "value": {
+                    "stringValue": "2026-11-24T08:30:00.123456789Z"
+                  }
+                },
+                {
+                  "key": "req.duration",
+                  "value": {
+                    "intValue": "1500"
+                  }
+                },
+                {
+                  "key": "req.strings",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "a"
+                        },
+                        {
+                          "stringValue": "b"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "req.ints",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "intValue": "1"
+                        },
+                        {
+                          "intValue": "2"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "req.error",
+                  "value": {
+                    "stringValue": "boom"
+                  }
+                },
+                {
+                  "key": "req.stringer",
+                  "value": {
+                    "stringValue": "from String()"
+                  }
+                },
+                {
+                  "key": "req.other",
+                  "value": {
+                    "stringValue": "map[x:1]"
+                  }
+                },
+                {
+                  "key": "req.nested.a",
+                  "value": {
+                    "stringValue": "1"
+                  }
+                },
+                {
+                  "key": "req.nested.deeper.b",
+                  "value": {
+                    "intValue": "2"
+                  }
+                },
+                {
+                  "key": "req.inlined",
+                  "value": {
+                    "stringValue": "yes"
+                  }
+                }
+              ],
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "00f067aa0ba902b7",
+              "flags": 1
+            },
+            {
+              "timeUnixNano": "1795509000123456789",
+              "observedTimeUnixNano": "1795509000124456789",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "an event"
+              },
+              "attributes": [
+                {
+                  "key": "event.name",
+                  "value": {
+                    "stringValue": "tmock.http.request"
+                  }
+                }
+              ],
+              "eventName": "tmock.http.request"
+            },
+            {
+              "timeUnixNano": "1795509000123456789",
+              "observedTimeUnixNano": "1795509000124456789",
+              "severityNumber": 1,
+              "severityText": "DEBUG-8",
+              "body": {
+                "stringValue": "level DEBUG-8"
+              }
+            },
+            {
+              "timeUnixNano": "1795509000123456789",
+              "observedTimeUnixNano": "1795509000124456789",
+              "severityNumber": 5,
+              "severityText": "DEBUG",
+              "body": {
+                "stringValue": "level DEBUG"
+              }
+            },
+            {
+              "timeUnixNano": "1795509000123456789",
+              "observedTimeUnixNano": "1795509000124456789",
+              "severityNumber": 11,
+              "severityText": "INFO+2",
+              "body": {
+                "stringValue": "level INFO+2"
+              }
+            },
+            {
+              "timeUnixNano": "1795509000123456789",
+              "observedTimeUnixNano": "1795509000124456789",
+              "severityNumber": 13,
+              "severityText": "WARN",
+              "body": {
+                "stringValue": "level WARN"
+              }
+            },
+            {
+              "timeUnixNano": "1795509000123456789",
+              "observedTimeUnixNano": "1795509000124456789",
+              "severityNumber": 17,
+              "severityText": "ERROR",
+              "body": {
+                "stringValue": "level ERROR"
+              }
+            },
+            {
+              "timeUnixNano": "1795509000123456789",
+              "observedTimeUnixNano": "1795509000124456789",
+              "severityNumber": 24,
+              "severityText": "ERROR+20",
+              "body": {
+                "stringValue": "level ERROR+20"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

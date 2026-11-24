@@ -152,6 +152,12 @@ There is one binary, `app-go/cmd/tmock`, listening on `PORT` (default 3000). Sub
 The mux mounts the REST API and the proxy at `/api/`, the health check at `/status`, API docs at
 `/swagger`, and the UI at `/` (including `/ui/*` fragments and `/static/*`).
 
+**Shutdown.** On the first SIGINT or SIGTERM, `serve` stops accepting connections and waits up
+to **20 s** for open requests (`tmock.server.stopped` reports whether any had to be cut off),
+then flushes the log exporter for up to **5 s** (§2.4.5), so the whole sequence fits
+Kubernetes' default 30-second grace period. A second signal during the drain ends the process
+at once.
+
 ### 2.3 Package layout
 
 ```
@@ -190,11 +196,13 @@ app-go/
     │                         # migrations/*.sql (embedded), SQLSTATE → typed errors
     ├── store/                # repositories: services, scenarios, clients, users, sessions
     ├── app/                  # use cases shared by the REST API and the UI (§2.1)
-    ├── httpx/                # JSON I/O, errors, validation, Optional[T], CORS, security headers
+    ├── httpx/                # error format, panic recovery; JSON I/O, validation, Optional[T],
+    │                         # CORS, security headers (from I03)
+    ├── clientip/             # the client-IP rule (§7.3), shared by logging, conditions and auth
     ├── auth/                 # sessions, guards, client-token guard (used by API and UI)
     ├── api/                  # REST handlers
     ├── catalog/              # cached snapshot of services/scenarios/clients for the proxy
-    ├── condition/            # client condition model, validation, evaluation, client IP
+    ├── condition/            # client condition model, validation, evaluation
     ├── expr/                 # request-condition expression language
     ├── liquid/               # Liquid template subset
     ├── proxy/                # proxy handler, scenario matching, response modification
@@ -333,11 +341,14 @@ traces of the system under test:
   is sent when it reaches `OTEL_BLRP_MAX_EXPORT_BATCH_SIZE` records or `OTEL_BLRP_SCHEDULE_DELAY`
   after its first record, whichever comes first. Only one export is in flight at a time. When the
   queue is full, new records are dropped and counted; the count is reported on the console at
-  most once a minute (`tmock.otlp.dropped`, warn).
+  most once a minute (`tmock.otlp.dropped`, warn, with `tmock.otlp.dropped.queue_full` and
+  `tmock.otlp.dropped.export_failed`), and once more at shutdown.
 - **Retry:** network errors and `429`, `502`, `503`, `504` are retried with exponential backoff
   (1 s, 2 s, 4 s, … with jitter, honouring `Retry-After`) until `OTEL_BLRP_EXPORT_TIMEOUT` has
   passed, then the batch is dropped and counted. Other `4xx`/`5xx` responses drop the batch
-  immediately. A `partialSuccess` with `rejectedLogRecords > 0` is reported on the console.
+  immediately. Each dropped batch is reported on the console at once (`tmock.otlp.export_failed`,
+  warn). A `partialSuccess` with `rejectedLogRecords > 0` is reported on the console too
+  (`tmock.otlp.partial_success`, warn). These three events go to the console only.
   Each HTTP attempt is limited by `OTEL_EXPORTER_OTLP_TIMEOUT`.
 - **Transport:** its own `http.Client` (not the proxy's transport), HTTPS with the system roots,
   optional gzip (`OTEL_EXPORTER_OTLP_COMPRESSION=gzip`, using `compress/gzip`), and the headers
@@ -447,10 +458,10 @@ configuration can be reused with few edits.
 | `PORT` | `3000` | Listen port |
 | `TZ` | system | Time zone for templates (`date` filter) |
 | `TMOCK_ENV` | `development` | `production` → secure cookies, `upgrade-insecure-requests`, `SESSION_SECRET` required |
-| `DATABASE_URL` | — | Full DSN, passed to pgx (§3.3). If unset, it is built from the variables below |
+| `DATABASE_URL` | — | Full DSN, passed to pgx (§3.3). If unset, it is built from the variables below. Until I02 no database is needed, so leaving all of them unset is valid; setting only some of `DATABASE_HOST`, `_NAME`, `_USER` is an error |
 | `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD` | —, `5432`, … | PostgreSQL connection |
 | `DATABASE_ENABLE_SSL` | `false` | `true` → `sslmode=require` |
-| `SESSION_SECRET` | random per process outside production | Secret for hashing session IDs |
+| `SESSION_SECRET` | random per process outside production | Secret for hashing session IDs; at least 32 characters (for example `openssl rand -base64 48`) |
 | `DISABLE_CACHE` | `false` | `true` → the proxy reads the DB on every request |
 | `CACHE_TTL` | `10m` | Catalog cache TTL (Go duration) |
 | `SERVICES_API_KEY` | — | If set, the `Apikey` header is added to every upstream request |
@@ -1747,7 +1758,7 @@ Update this table as issues are created and closed.
 | ID | Title | Issue | Status | Notes |
 |---|---|---|---|---|
 | I00 | Go scaffolding | #31 | In review | htmx 4.0.2, Alpine CSP 3.17.5, gomponents v1.4.0 |
-| I01 | Configuration, logging, lifecycle | | Planned | |
+| I01 | Configuration, logging, lifecycle | #34 | In review | own OTLP exporter; `internal/clientip` added |
 | I02 | Database, migrations, passwords, seed | | Planned | |
 | I03 | HTTP foundation | | Planned | |
 | I04 | Login, sessions, UI shell | | Planned | |
