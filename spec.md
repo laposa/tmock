@@ -87,8 +87,16 @@ There is exactly one `go.mod`, in `app-go/`. No `go.work` file is needed.
 | `github.com/jackc/pgx/v5/stdlib` | `internal/db` (as a blank import that registers the `database/sql` driver) |
 
 Every other package uses the standard library only, and all SQL is written against `database/sql`.
-A test in `internal/archtest` runs `go list -deps` and fails if any package reaches a non-stdlib
-import outside this table.
+A test in `internal/archtest` runs `go list -deps` over the module and enforces two rules:
+
+1. **Direct imports:** a package may import a third-party module only if the table above grants
+   it. Indirect reach is allowed (for example `internal/store` → `internal/db` → pgx).
+2. **UI isolation:** no package except the UI packages and the composition root `cmd/tmock` may
+   depend on a UI package or on gomponents, directly or indirectly. So `internal/server` does not
+   import the UI; `cmd/tmock` builds the UI handler and passes it in.
+
+The test also reads every source file, so `go test` re-runs it whenever the code changes (its
+result would otherwise be cached, because the files `go list` reads are invisible to the cache).
 
 ---
 
@@ -155,12 +163,15 @@ app-go/
 ├── Dockerfile                # production image (build context: repository root)
 ├── README.md
 ├── cmd/
-│   ├── tmock/                # main: serve | migrate | seed | import-legacy
+│   ├── tmock/                # main: serve | migrate | seed | import-legacy; composition root
 │   └── echo-upstream/        # dev tool: fake upstream that echoes requests (for proxy testing)
+├── dev/
+│   ├── vendorjs/             # `make vendor-js`: re-downloads and verifies static/vendor
+│   └── otelcol.yaml          # OpenTelemetry Collector config for `make otel-up`
 ├── openapi/                  # openapi.json (embedded) + swagger page
-├── static/                   # embedded via go:embed
+├── static/                   # embedded via go:embed (static.go: FS, vendor paths, VERSIONS parser)
 │   ├── app.css
-│   ├── app.js                # Alpine components (Alpine.data) + htmx config
+│   ├── app.js                # Alpine components (Alpine.data) and htmx event listeners
 │   ├── logo.svg, favicon.ico
 │   └── vendor/
 │       ├── htmx-4.x.y.min.js
@@ -1032,11 +1043,13 @@ implementation is new.
   fails if any appears in the output. CSP therefore stays as in §9.4, with `script-src 'self'` and no
   `unsafe-eval`, and the `hx-csp` extension (nonces on every element) is **not** needed. No inline
   `<script>` anywhere.
-- **Configuration** is set in `static/app.js` before htmx processes the page:
-  - `htmx.config.includeIndicatorCSS = false` (indicator styles live in `app.css`);
-  - `htmx.config.history = false`, because navigation between pages is plain links and modals
-    don't push URLs; back/forward behave like a normal multi-page site;
-  - `htmx.config.implicitInheritance` stays at its default `false`.
+- **Configuration** is set with `<meta name="htmx-config">` in the layout, not in `app.js`:
+  htmx 4 reads the meta tag, and creates its indicator stylesheet, while its own script loads,
+  before any later script runs. A meta tag is not a script, so the CSP is unaffected.
+  - `includeIndicatorCSS: false` (indicator styles live in `app.css`);
+  - `history: false`, because navigation between pages is plain links and modals don't push
+    URLs; back/forward behave like a normal multi-page site;
+  - `implicitInheritance` stays at its default `false`.
 - **Explicit inheritance.** htmx 4 attributes don't flow to children unless the parent uses the
   `:inherited` modifier, for example `hx-target:inherited="#modal-body"` on a table whose rows open
   the modal. The `internal/web` helpers emit the modifier explicitly. Request verbs and
@@ -1733,7 +1746,7 @@ Update this table as issues are created and closed.
 
 | ID | Title | Issue | Status | Notes |
 |---|---|---|---|---|
-| I00 | Go scaffolding | | Planned | |
+| I00 | Go scaffolding | #31 | In review | htmx 4.0.2, Alpine CSP 3.17.5, gomponents v1.4.0 |
 | I01 | Configuration, logging, lifecycle | | Planned | |
 | I02 | Database, migrations, passwords, seed | | Planned | |
 | I03 | HTTP foundation | | Planned | |
