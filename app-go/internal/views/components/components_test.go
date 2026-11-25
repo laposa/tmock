@@ -64,6 +64,8 @@ func TestForm(t *testing.T) {
 			`<div class="alert alert--error" role="alert">Wrong</div>[field]<div class="form__actions">[action]</div></form>`)
 	check(t, "get, no error, no actions", Form(FormProps{Method: "get", Fields: []g.Node{field}}),
 		`<form class="form" method="get">[field]</form>`)
+	check(t, "footer instead of actions", Form(FormProps{Fields: []g.Node{field}, Actions: []g.Node{action}, Footer: g.Text("[footer]")}),
+		`<form class="form" method="post">[field][footer]</form>`)
 }
 
 func TestAlert(t *testing.T) {
@@ -88,6 +90,9 @@ func TestNav(t *testing.T) {
 		`<nav class="nav" aria-label="Main"><a class="nav__link" href="/a">A</a>`+
 			`<a class="nav__link" href="/b" aria-current="page">B</a>`+
 			`<form class="nav__form" method="post" action="/logout"><button class="nav__link nav__link--button" type="submit">Logout</button></form></nav>`)
+	check(t, "form with attrs", Nav(NavProps{Label: "Main", Forms: []NavForm{{Label: "Logout", Action: "/logout", Attrs: []g.Node{click}}}}),
+		`<nav class="nav" aria-label="Main"><form class="nav__form" method="post" action="/logout" x-on:click="go">`+
+			`<button class="nav__link nav__link--button" type="submit">Logout</button></form></nav>`)
 }
 
 func TestShell(t *testing.T) {
@@ -145,4 +150,48 @@ func TestConfirmDialog(t *testing.T) {
 			`<p class="confirm__message" id="confirm-message" x-text="message"></p><div class="confirm__actions">`+
 			`<button type="button" class="button button--danger" x-on:click="accept">Confirm</button>`+
 			`<button type="button" class="button" x-on:click="cancel">Cancel</button></div></dialog>`)
+}
+
+func TestModalContent(t *testing.T) {
+	check(t, "title then body", ModalContent(ModalContentProps{Title: "Edit <x>", Body: []g.Node{g.Text("[form]")}}),
+		`<div class="modal-content"><h2 class="modal-content__title" id="modal-title">Edit &lt;x&gt;</h2>[form]</div>`)
+	check(t, "persistent", ModalContent(ModalContentProps{Title: "T", Persistent: true}),
+		`<div class="modal-content" data-persistent><h2 class="modal-content__title" id="modal-title">T</h2></div>`)
+}
+
+func TestModalFooter(t *testing.T) {
+	check(t, "start then end", ModalFooter(ModalFooterProps{Start: []g.Node{g.Text("[delete]")}, End: []g.Node{g.Text("[close]"), g.Text("[save]")}}),
+		`<div class="modal-footer"><div class="modal-footer__start">[delete]</div><div class="modal-footer__end">[close][save]</div></div>`)
+	check(t, "empty start", ModalFooter(ModalFooterProps{End: []g.Node{g.Text("[close]")}}),
+		`<div class="modal-footer"><div class="modal-footer__start"></div><div class="modal-footer__end">[close]</div></div>`)
+	check(t, "close button", CloseModalButton(),
+		`<button type="button" class="button" x-on:click="close">Close</button>`)
+}
+
+func TestTable(t *testing.T) {
+	check(t, "rows", Table(TableProps{
+		Columns: []string{"Name", "Path"},
+		Rows: []TableRow{
+			{Cells: []g.Node{g.Text("A"), g.Text("a")}},
+			{Cells: []g.Node{g.Text("<B>"), g.Text("b")}, Attrs: []g.Node{click}},
+		},
+		Empty: "ignored when there are rows",
+		Attrs: []g.Node{g.Attr("id", "t")},
+	}),
+		`<div class="table" id="t"><table class="table__table"><thead><tr>`+
+			`<th class="table__head" scope="col">Name</th><th class="table__head" scope="col">Path</th></tr></thead><tbody>`+
+			`<tr class="table__row"><td class="table__cell">A</td><td class="table__cell">a</td></tr>`+
+			`<tr class="table__row" x-on:click="go"><td class="table__cell">&lt;B&gt;</td><td class="table__cell">b</td></tr>`+
+			`</tbody></table></div>`)
+	check(t, "empty", Table(TableProps{Columns: []string{"Name", "Path", "URL"}, Empty: "Nothing yet"}),
+		`<div class="table"><table class="table__table"><thead><tr>`+
+			`<th class="table__head" scope="col">Name</th><th class="table__head" scope="col">Path</th><th class="table__head" scope="col">URL</th></tr></thead><tbody>`+
+			`<tr><td class="table__empty" colspan="3">Nothing yet</td></tr></tbody></table></div>`)
+	check(t, "empty without message", Table(TableProps{Columns: []string{"Name"}}),
+		`<div class="table"><table class="table__table"><thead><tr><th class="table__head" scope="col">Name</th></tr></thead><tbody></tbody></table></div>`)
+}
+
+func TestLinkButton(t *testing.T) {
+	check(t, "link button", LinkButton(LinkButtonProps{Label: "My <svc>", Attrs: []g.Node{click}}),
+		`<button type="button" class="link-button" x-on:click="go">My &lt;svc&gt;</button>`)
 }

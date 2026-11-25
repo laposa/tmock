@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 
 	"github.com/laposa/tmock/app-go/internal/app"
@@ -32,13 +33,29 @@ const (
 )
 
 // toast asks the page to show a toast once htmx has handled the response, through
-// HX-Trigger (spec §10.2). The event is raised on <body> ("target"), because the element
-// that sent the request may have been swapped out by then, and an event on a detached
-// element never reaches the listener in app.js.
+// HX-Trigger (spec §10.2).
 func toast(w http.ResponseWriter, typ, title, message string) {
-	b, err := json.Marshal(map[string]any{"toast": map[string]string{
-		"target": "body", "type": typ, "title": title, "message": message,
-	}})
+	trigger(w, "toast", map[string]string{"type": typ, "title": title, "message": message})
+}
+
+// closeModal asks the page to close the modal (spec §10.2).
+func closeModal(w http.ResponseWriter) { trigger(w, "modal:close", map[string]string{}) }
+
+// trigger adds the event name with detail to the response's HX-Trigger header, keeping
+// the events already there. The event is raised on <body> ("target"), because the
+// element that sent the request may have been swapped out by then, and an event on a
+// detached element never reaches the listeners in app.js.
+func trigger(w http.ResponseWriter, name string, detail map[string]string) {
+	events := map[string]map[string]string{}
+	if cur := w.Header().Get("HX-Trigger"); cur != "" {
+		if err := json.Unmarshal([]byte(cur), &events); err != nil {
+			panic("web: HX-Trigger is not ours: " + err.Error())
+		}
+	}
+	d := map[string]string{"target": "body"}
+	maps.Copy(d, detail)
+	events[name] = d
+	b, err := json.Marshal(events)
 	if err != nil {
 		panic(err) // strings always marshal
 	}

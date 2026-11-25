@@ -36,6 +36,13 @@
   --color-focus: #1867c0;              /* Vuetify light-theme primary */
   --color-scrim: rgba(33, 33, 33, 0.46);
 
+  /* Vuetify v-table theme="dark": the legacy tables are dark in both themes */
+  --color-table-bg: #212121;
+  --color-table-text: #ffffff;
+  --color-table-head: rgba(255, 255, 255, 0.7);
+  --color-table-border: rgba(255, 255, 255, 0.12);
+  --color-table-row-hover: rgba(255, 255, 255, 0.04);
+
   /* Vuetify colour palette, as the legacy templates named them */
   --color-primary: #3f51b5;            /* color="indigo" */
   --color-primary-hover: #5c6bc0;      /* indigo lighten-1 */
@@ -71,6 +78,7 @@
   --content-width: 1280px;
   --login-width: 400px;
   --dialog-width: 800px;
+  --table-radius: 10px;                /* legacy ServiceList.vue .v-table */
   --confirm-width: 600px;
   --logo-size: 50px;
   --control-height: 36px;              /* v-btn default */
@@ -444,6 +452,21 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
 
 .modal__body { padding: var(--space-4); }
 
+.modal-content { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.modal-content__title { font-size: var(--font-size-card-title); color: inherit; }
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.modal-footer__start,
+.modal-footer__end { display: flex; gap: var(--space-2); }
+
 /* ── confirm.go ────────────────────────────────────────────────────────────── */
 
 .confirm {
@@ -468,3 +491,57 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4) var(--space-3);
 }
+
+/* ── table.go ──────────────────────────────────────────────────────────────── */
+
+.table {
+  overflow-x: auto;
+  border-radius: var(--table-radius);
+  background: var(--color-table-bg);
+  color: var(--color-table-text);
+}
+
+.table__table { width: 100%; border-collapse: collapse; }
+
+.table__head {
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  text-align: left;
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  color: var(--color-table-head);
+  border-bottom: 1px solid var(--color-table-border);
+}
+
+.table__cell {
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+.table__row + .table__row .table__cell { border-top: 1px solid var(--color-table-border); }
+
+.table__row:hover { background: var(--color-table-row-hover); }
+
+.table__empty {
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  color: var(--color-table-head);
+  text-align: center;
+}
+
+/* ── linkbutton.go ─────────────────────────────────────────────────────────── */
+
+/* Legacy span.edit: the link colour, white on hover. */
+.link-button {
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--color-link);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.link-button:hover { color: var(--color-table-text); }

@@ -56,6 +56,12 @@ const (
 
 	AttrSessionsDeleted = "tmock.sessions.deleted"
 
+	AttrEntityType   = "tmock.entity.type"
+	AttrEntityID     = "tmock.entity.id"
+	AttrEntityAction = "tmock.entity.action"
+	AttrActor        = "tmock.actor"
+	AttrService      = "tmock.service" // a service's path
+
 	AttrMigrationVersion = "tmock.migration.version"
 	AttrMigrationName    = "tmock.migration.name"
 
@@ -64,4 +70,16 @@ const (
 	AttrOTLPDroppedQueue    = "tmock.otlp.dropped.queue_full"
 	AttrOTLPDroppedFailed   = "tmock.otlp.dropped.export_failed"
 	AttrOTLPRejectedRecords = "tmock.otlp.rejected_records"
+)
+
+// Values of the tmock.entity.* and tmock.actor attributes of tmock.entity.changed
+// (spec §2.4.2).
+const (
+	EntityService = "service"
+
+	ActionCreate = "create"
+	ActionUpdate = "update"
+	ActionDelete = "delete"
+
+	ActorUser = "user"
 )

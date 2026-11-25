@@ -9,6 +9,7 @@ import (
 	h "maragu.dev/gomponents/html"
 
 	"github.com/laposa/tmock/app-go/internal/views/components"
+	"github.com/laposa/tmock/app-go/internal/views/hx"
 	"github.com/laposa/tmock/app-go/static"
 )
 
@@ -54,6 +55,9 @@ func Page(p Props) g.Node {
 	)
 }
 
+// LogoutQuestion is what the confirmation dialog asks before logging out.
+const LogoutQuestion = "Are you sure you want to log out?"
+
 // Nav is the main navigation (spec §10.3 Layout): Services, Clients, Scenarios, Accounts
 // (admins only), My Account, Logout.
 func Nav(current Section, admin bool) g.Node {
@@ -68,7 +72,12 @@ func Nav(current Section, admin bool) g.Node {
 	return components.Nav(components.NavProps{
 		Label: "Main",
 		Items: items,
-		Forms: []components.NavForm{{Label: "Logout", Action: "/logout"}},
+		Forms: []components.NavForm{{
+			Label: "Logout", Action: "/logout",
+			// Asks first, in the confirmation dialog; without JavaScript the form logs out
+			// at once.
+			Attrs: []g.Node{hx.Post("/logout"), hx.Confirm(LogoutQuestion)},
+		}},
 	})
 }
 

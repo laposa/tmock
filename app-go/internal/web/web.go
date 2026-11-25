@@ -45,9 +45,9 @@ func Handler(d Deps) http.Handler {
 	mux.HandleFunc("GET /login", u.loginPage)
 	mux.HandleFunc("POST /login", u.login)
 	mux.HandleFunc("POST /logout", u.logout)
+	u.registerServices(mux)
 	// Placeholders until each page's iteration (spec §15.3).
 	mux.Handle("GET /{$}", u.placeholder(layout.Clients, "Clients", "I07", false))
-	mux.Handle("GET /services", u.placeholder(layout.Services, "Services", "I05", false))
 	mux.Handle("GET /scenarios", u.placeholder(layout.Scenarios, "Scenarios", "I06", false))
 	mux.Handle("GET /accounts", u.placeholder(layout.Accounts, "Accounts", "I08", true))
 	mux.Handle("GET /my-account", u.placeholder(layout.MyAccount, "My Account", "I08", false))

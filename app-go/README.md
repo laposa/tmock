@@ -4,10 +4,10 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I04** (login, sessions and the UI shell). You can log in to the
-  dashboard and see its shell: the navigation, toasts and dialogs, with placeholder pages
-  for the sections later iterations build. The REST API has login, logout and `me` with
-  database-backed sessions. Progress is tracked in spec §16.
+- **Status:** iteration **I05** (services). You can log in to the dashboard and manage
+  services on the Services page; the other sections are placeholder pages until later
+  iterations build them. The REST API has login, logout, `me` and CRUD on `/api/service`.
+  Progress is tracked in spec §16.
 
 ## Prerequisites
 
@@ -90,14 +90,40 @@ your `PATH`, so run it as `bin/tmock <command>` from `app-go/` (or without build
 | `bin/tmock migrate` | Applies pending migrations from `internal/db/migrations/` and exits. Safe to run concurrently |
 | `bin/tmock seed` | Creates the first admin from `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` if there are no users; otherwise does nothing |
 
-What to check after I04 (the earlier checks still apply; start the server with `make run` and
+What to check after I05 (the earlier checks still apply; start the server with `make run` and
 log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`):
+
+| Check | Expected |
+|---|---|
+| Open <http://localhost:3000/services> | the Services page: "Add Service" and a dark table Name \| Upstream URL \| Path ("No services yet." when empty) |
+| Add Service, Create with empty fields | the modal stays open; "is required" under each field; an error toast |
+| Path `a/b`, upstream URL `ftp://x` | "may contain only letters, digits, '.', '_' and '-'" under Path; "must be an absolute http or https URL" under Upstream URL |
+| Valid values, Create | the modal closes, the table shows the service, toast `Service "…" created` |
+| The same path again | "A service with path "…" already exists" above the fields |
+| Click a service's name, change Name, URL and Path, Save | the modal closes; the table shows the new values; toast `Service "…" updated` |
+| Edit, Delete | the confirmation names the service and says its scenarios go too; Cancel keeps it, Confirm removes it from the table with a toast |
+| Close, or a click on the backdrop | the modal closes without saving |
+| Logout in the menu | the confirmation dialog asks "Are you sure you want to log out?"; Cancel (or Escape) stays logged in, Confirm goes to `/login` |
+| Browser console | no errors and no CSP violations (a failed save shows as a `422` network line, which is expected) |
+| curl CRUD (below) | `201`, `200`, `200`, `204`; a duplicate path `409`; `a/b` or a bad URL `400` with `details`; without the cookie `401` |
+| Console log | one `tmock.entity.changed` line per create, update and delete, with `tmock.entity.type=service`, `tmock.service=<path>` and `user.id` |
+| `make test-db` | the services store, use cases, endpoints and UI handlers |
+
+```bash
+curl -c /tmp/cj -H 'Content-Type: application/json' -d '{"email":"…","password":"…"}' localhost:3000/api/auth/login
+curl -b /tmp/cj -H 'Content-Type: application/json' -d '{"path":"svc","name":"Svc","upstreamUrl":"http://localhost:9999"}' localhost:3000/api/service
+curl -b /tmp/cj localhost:3000/api/service
+curl -b /tmp/cj -X PATCH -H 'Content-Type: application/json' -d '{"path":"svc2"}' localhost:3000/api/service/svc
+curl -b /tmp/cj -X DELETE localhost:3000/api/service/svc2
+```
+
+What to check after I04:
 
 | Check | Expected |
 |---|---|
 | Open <http://localhost:3000/> | redirected to `/login`; the Login button is disabled until both fields are filled |
 | Log in with a wrong password | "Invalid email or password" above the fields; the email is kept |
-| Log in with the seeded admin | the Clients page with the menu Services, Clients, Scenarios, Accounts, My Account, Logout; each entry opens a placeholder naming its iteration |
+| Log in with the seeded admin | the Clients page with the menu Services, Clients, Scenarios, Accounts, My Account, Logout; each entry except Services opens a placeholder naming its iteration |
 | Reload | still logged in |
 | Logout | back on `/login`; `/services` redirects to `/login` again |
 | A non-admin user (see below) | no Accounts entry; `/accounts` redirects to `/` |
@@ -210,18 +236,18 @@ as unset.
 REST handlers are thin: decode, call a use case in `internal/app`, write the result (spec §2.1).
 
 ```go
-func (h *Handlers) patchService(w http.ResponseWriter, r *http.Request) {
-	var in app.ServicePatch // PATCH fields are httpx.Optional[T]: absent, null or a value
-	if err := httpx.DecodeJSON(w, r, &in); err != nil { // 400 / 413, §6.2 shape
-		httpx.WriteErr(w, r, h.logger, err)
+func (a *API) updateService(w http.ResponseWriter, r *http.Request) {
+	var p app.ServicePatch // PATCH fields are httpx.Optional[T]: absent, null or a value
+	if err := httpx.DecodeJSON(w, r, &p); err != nil { // 400 / 413, §6.2 shape
+		httpx.WriteErr(w, r, a.logger, err)
 		return
 	}
-	svc, err := h.app.PatchService(r.Context(), r.PathValue("path"), in)
+	s, err := a.app.UpdateService(r.Context(), actor(r), r.PathValue("path"), p)
 	if err != nil {
-		httpx.WriteErr(w, r, h.logger, err) // *app.Error → its status; anything else → logged 500
+		httpx.WriteErr(w, r, a.logger, err) // *app.Error → its status; anything else → logged 500
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, svc)
+	httpx.WriteJSON(w, http.StatusOK, s)
 }
 ```
 
@@ -233,6 +259,8 @@ func (h *Handlers) patchService(w http.ResponseWriter, r *http.Request) {
   `/api/proxy/*`, and answers unknown API routes with JSON `404`/`405`.
 - Routes that need a login are wrapped in `sessions.RequireUser` or `sessions.RequireAdmin`
   (`internal/auth`); the handler reads the user with `auth.UserFrom(r.Context())`.
+- Use cases that change something take an `app.Actor` (the logged-in user) and log
+  `tmock.entity.changed` themselves (spec §2.4.2).
 
 ## Writing UI pages
 
@@ -258,7 +286,13 @@ components.Form(components.FormProps{
   a form with `422` on validation errors, and use `fail` for other errors: the status, an error
   toast and `HX-Reswap: none` (spec §10.2).
 - `static/app.js` holds the Alpine components (`toasts`, `modal`, `confirm`, `requiredFields`);
-  HTML refers to them by name only. A toast is raised from Go with `toast(w, type, title, msg)`.
+  HTML refers to them by name only. A toast is raised from Go with `toast(w, type, title, msg)`,
+  the modal closed with `closeModal(w)`; both add to the same `HX-Trigger` header.
+- **Modals** (the Services page is the example): a button with `hx-get` and
+  `hx-target="#modal-body"` loads a `components.ModalContent` holding a `Form` whose `Footer`
+  is a `ModalFooter`. The form posts with `hx-target="#modal-body"`, so a `422` replaces the
+  modal content with the re-rendered form. A successful save answers with the refreshed list
+  and `HX-Retarget` / `HX-Reswap: outerHTML` pointing at it, plus a toast and `closeModal`.
 
 ## Logging
 

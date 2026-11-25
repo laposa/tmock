@@ -17,6 +17,7 @@ type NavItem struct {
 type NavForm struct {
 	Label  string
 	Action string
+	Attrs  []g.Node // on the <form>: hx-post, hx-confirm …
 }
 
 // NavProps configures a Nav.
@@ -35,7 +36,7 @@ func Nav(p NavProps) g.Node {
 				g.Text(it.Label))
 		}),
 		g.Map(p.Forms, func(f NavForm) g.Node {
-			return h.Form(h.Class("nav__form"), h.Method("post"), h.Action(f.Action),
+			return h.Form(h.Class("nav__form"), h.Method("post"), h.Action(f.Action), attrs(f.Attrs),
 				h.Button(h.Class("nav__link nav__link--button"), h.Type("submit"), g.Text(f.Label)))
 		}),
 	)
