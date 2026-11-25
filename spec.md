@@ -278,7 +278,7 @@ Durations are logged in milliseconds as integers (`tmock.duration_ms`).
 | `tmock.auth.login.failed` | warn | wrong email or password | `client.address` (never the email or password) | I04 |
 | `tmock.auth.logout` | info | logout | `user.id` | I04 |
 | `tmock.session.swept` | debug | hourly sweep (§9.2) | `tmock.sessions.deleted` | I04 |
-| `tmock.entity.changed` | info | a service, scenario, client or user was created, updated or deleted, or a client token was generated or revoked | `tmock.entity.type`, `tmock.entity.id`, `tmock.entity.action` (`create` \| `update` \| `delete` \| `token-generate` \| `token-revoke` \| `disable-all`), `tmock.actor` (`user` \| `client-token`), `user.id` or `tmock.client.id` | I05–I08 |
+| `tmock.entity.changed` | info | a service, scenario, client or user was created, updated or deleted, or a client token was generated or revoked | `tmock.entity.type`, `tmock.entity.id`, `tmock.entity.action` (`create` \| `update` \| `delete` \| `token-generate` \| `token-revoke` \| `disable-all`), `tmock.actor` (`user` \| `client-token`), `user.id` or `tmock.client.id`; for a service also `tmock.service` (its path after the change) | I05–I08 |
 | `tmock.catalog.rebuilt` | debug | a new snapshot is in place (§7.2) | `tmock.duration_ms`, `tmock.catalog.services`, `tmock.catalog.scenarios`, `tmock.catalog.clients` | I09 |
 | `tmock.catalog.rebuild_failed` | error | the rebuild failed; the old snapshot stays | `error.type`, `exception.message` | I09 |
 | `tmock.proxy.request` | info | each proxy request (§7.9) | `http.request.method`, `url.path`, `url.query`, `http.response.status_code`, `client.address`, `tmock.service`, `server.address` (upstream host), `tmock.duration_ms`, `http.response.body.size` (when known); from I10 also `tmock.client`, `tmock.scenario`, `tmock.mocked` (array of `status`, `headers`, `body`), `tmock.proxy_skipped` | I09, I10 |
@@ -717,8 +717,10 @@ clients (curl, test automation) are unaffected and need no CSRF token.
 | `PATCH /api/service/{path}` | any subset of the create fields | `200 Service` | `400`; `404`; `409` |
 | `DELETE /api/service/{path}` | — | `204`; cascades to scenarios and assignments | `404` |
 
-Validation: `path` matches `^[A-Za-z0-9._-]{1,255}$`; `upstreamUrl` is an absolute `http`/`https`
-URL; `name` is 1–255 characters.
+Validation: `path` matches `^[A-Za-z0-9._-]{1,255}$` and is not `.` or `..` (the proxy URL
+`/api/proxy/../x` is cleaned to another path, so such a service could never be reached; found in
+I05); `upstreamUrl` is an absolute `http`/`https` URL with a host, at most 2048 characters; `name`
+is 1–255 characters. Leading and trailing white space is trimmed from all three.
 
 **Scenarios** (guard: `user`)
 
@@ -1137,6 +1139,11 @@ implementation is new.
   (`htmx:after:settle`) and empties it on `close`. A click on the backdrop closes it unless the
   content carries `data-persistent`; a response closes it with
   `HX-Trigger: {"modal:close":{"target":"body"}}`.
+- **Saving in a modal** (found in I05): the form posts with `hx-target="#modal-body"`, so a `422`
+  replaces the modal content with the re-rendered form. A successful save or delete answers `200`
+  with the refreshed list, `HX-Retarget` naming the list's id and `HX-Reswap: outerHTML`, and one
+  `HX-Trigger` with both the success toast and `modal:close`. A Close button in the content calls
+  the `modal` component's `close()`.
 - **Confirmations** use a second, smaller `<dialog id="confirm">`. Buttons carry `hx-confirm`;
   `app.js` cancels htmx 4's `htmx:confirm` event, shows the question, and calls
   `issueRequest()` on Confirm or `dropRequest()` on Cancel or Escape, instead of
@@ -1866,8 +1873,8 @@ Update this table as issues are created and closed.
 | I01 | Configuration, logging, lifecycle | #34 | Done | own OTLP exporter; `internal/clientip` added |
 | I02 | Database, migrations, passwords, seed | #36 | Done | pgx v5.11.0; `internal/db/dbtest` helper; PostgreSQL 17 only |
 | I03 | HTTP foundation | #40 | In review | JSON 405 with `Allow`; `app.Error` kinds; Optional field name caveat on Go 1.27 |
-| I04 | Login, sessions, UI shell | #43 | In review | `internal/views/hx` instead of helpers in `web`; toasts need `"target":"body"`; placeholder pages until I05–I08 |
-| I05 | Services | | Planned | |
+| I04 | Login, sessions, UI shell | #43 | Done | `internal/views/hx` instead of helpers in `web`; toasts need `"target":"body"`; placeholder pages until I05–I08 |
+| I05 | Services | #45 | In review | path `.`/`..` rejected; modal saves answer with the list via `HX-Retarget`; `tmock.service` on the entity event; table, link button, modal content/footer components |
 | I06 | Scenarios | | Planned | |
 | I07 | Clients, assignments, tokens | | Planned | |
 | I08 | Condition builder, accounts (M1) | | Planned | |

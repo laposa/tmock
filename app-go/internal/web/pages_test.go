@@ -49,7 +49,7 @@ func TestRouteGuards(t *testing.T) {
 		{"/accounts", nil, 303, "/login"},
 		{"/my-account", nil, 303, "/login"},
 		{"/", user, 200, ""},
-		{"/services", user, 200, ""},
+		// /services with a session needs a database: services_test.go.
 		{"/scenarios", user, 200, ""},
 		{"/my-account", user, 200, ""},
 		{"/accounts", user, 303, "/"},
@@ -78,17 +78,17 @@ func TestPlaceholderPages(t *testing.T) {
 	h, sessions, _ := newHandler(t)
 	admin, user := sessionCookie(t, sessions, 1), sessionCookie(t, sessions, 2)
 
-	rec := serve(h, "GET", "/services", user, false)
+	rec := serve(h, "GET", "/scenarios", user, false)
 	body := rec.Body.String()
 	for _, want := range []string{
-		"<title>Services · Tmock</title>",
-		`<a class="nav__link" href="/services" aria-current="page">Services</a>`,
-		"iteration I05",
+		"<title>Scenarios · Tmock</title>",
+		`<a class="nav__link" href="/scenarios" aria-current="page">Scenarios</a>`,
+		"iteration I06",
 		`x-data="jsStatus"`,
 		`hx-get="/api/status"`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("/services lacks %q", want)
+			t.Errorf("/scenarios lacks %q", want)
 		}
 	}
 	if strings.Contains(body, `href="/accounts"`) {

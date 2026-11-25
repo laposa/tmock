@@ -33,6 +33,7 @@ func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/login", a.login)
 	mux.HandleFunc("POST /api/auth/logout", a.logout)
 	mux.Handle("GET /api/auth/me", a.sessions.RequireUser(http.HandlerFunc(a.me)))
+	a.registerServices(mux)
 }
 
 // login is POST /api/auth/login: 200 with the user and the session cookie, 401 for a

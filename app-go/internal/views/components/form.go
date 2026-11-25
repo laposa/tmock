@@ -12,11 +12,12 @@ type FormProps struct {
 	Error   string // a message about the whole form, shown above the fields
 	Fields  []g.Node
 	Actions []g.Node // buttons, in reading order
+	Footer  g.Node   // instead of Actions: a footer that lays out its own buttons (ModalFooter)
 	Attrs   []g.Node // hx-*, x-* …
 }
 
 // Form is a <form> that also works without JavaScript (spec §10.1). It places, in this
-// order: the form error, the fields, the actions.
+// order: the form error, the fields, the actions (or the footer).
 func Form(p FormProps) g.Node {
 	method := p.Method
 	if method == "" {
@@ -28,6 +29,7 @@ func Form(p FormProps) g.Node {
 		attrs(p.Attrs),
 		g.If(p.Error != "", Alert(AlertProps{Type: AlertError, Message: p.Error})),
 		g.Group(p.Fields),
-		g.If(len(p.Actions) > 0, h.Div(h.Class("form__actions"), g.Group(p.Actions))),
+		g.If(len(p.Actions) > 0 && p.Footer == nil, h.Div(h.Class("form__actions"), g.Group(p.Actions))),
+		p.Footer,
 	)
 }

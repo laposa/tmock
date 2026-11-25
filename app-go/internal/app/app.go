@@ -26,9 +26,10 @@ import (
 // App is the set of use cases. Create it once, with New, and share it between the REST
 // API and the UI.
 type App struct {
-	logger *slog.Logger
-	hasher password.Hasher
-	users  *store.Users
+	logger   *slog.Logger
+	hasher   password.Hasher
+	users    *store.Users
+	services *store.Services
 }
 
 // Options configures the use cases. The zero value is ready for production.
@@ -43,7 +44,7 @@ func New(pool *sql.DB, opts Options) *App {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &App{logger: logger, hasher: opts.Hasher, users: store.NewUsers(pool)}
+	return &App{logger: logger, hasher: opts.Hasher, users: store.NewUsers(pool), services: store.NewServices(pool)}
 }
 
 // User is a user as the API and the UI show it (spec §6.1): never with the password.

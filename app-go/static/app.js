@@ -53,7 +53,7 @@ document.addEventListener('alpine:init', () => {
   // htmx loads content into #modal-body; the dialog opens when it arrives and is emptied
   // when it closes. Content with data-persistent (an editor with unsaved changes) does not
   // close on a click on the backdrop. A response can close the dialog with
-  // HX-Trigger: {"modal:close":{"target":"body"}}.
+  // HX-Trigger: {"modal:close":{"target":"body"}}, and its Close button with close().
   Alpine.data('modal', () => ({
     init() {
       const dialog = this.$el;
@@ -71,6 +71,11 @@ document.addEventListener('alpine:init', () => {
       dialog.addEventListener('close', () => {
         dialog.querySelector('#modal-body').replaceChildren();
       });
+    },
+    // The Close button of modal content (components.CloseModalButton). $root, not $el:
+    // in an x-on handler $el is the button that was clicked.
+    close() {
+      this.$root.close();
     },
   }));
 
