@@ -6,7 +6,7 @@ import { Pool } from 'pg';
 import * as schema from './schema';
 
 async function seed() {
-  const email = process.env.ADMIN_EMAIL || 'hugo@laposa.ie';
+  const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD;
 
   if (!password) {

@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/laposa/tmock/app-go/internal/config"
 	"github.com/laposa/tmock/app-go/internal/logx"
+	"github.com/laposa/tmock/app-go/internal/password"
 	"github.com/laposa/tmock/app-go/internal/server"
 	"github.com/laposa/tmock/app-go/internal/web"
 )
@@ -28,9 +30,15 @@ import (
 const usage = `Usage: tmock [command]
 
 Commands:
-  serve   Run the server (default). Configuration comes from the environment and an
-          optional .env file in the working directory; see app-go/README.md.
-  help    Show this help.
+  serve    Run the server (default). With MIGRATE_ON_START=true it applies pending
+           migrations first; otherwise it refuses to start while any are pending.
+  migrate  Apply pending database migrations and exit.
+  seed     Create the first admin from ADMIN_NAME, ADMIN_EMAIL and ADMIN_PASSWORD if there
+           are no users yet, and exit.
+  help     Show this help.
+
+Configuration comes from the environment and an optional .env file in the working
+directory; see app-go/README.md.
 `
 
 const (
@@ -53,9 +61,9 @@ func run(ctx context.Context, args []string, env config.Lookup, stdout, stderr i
 		cmd = args[0]
 	}
 	switch cmd {
-	case "serve":
+	case "serve", "migrate", "seed":
 		if len(args) > 1 {
-			fmt.Fprintf(stderr, "serve takes no arguments\n\n%s", usage)
+			fmt.Fprintf(stderr, "%s takes no arguments\n\n%s", cmd, usage)
 			return 2
 		}
 	case "help", "-h", "-help", "--help":
@@ -85,17 +93,47 @@ func run(ctx context.Context, args []string, env config.Lookup, stdout, stderr i
 	defer stop()
 	context.AfterFunc(ctx, stop)
 
-	ln, err := net.Listen("tcp", net.JoinHostPort("", strconv.Itoa(cfg.Port)))
+	pool, err := openDatabase(ctx, cfg)
 	if err != nil {
-		logs.logger.Error("cannot listen: " + err.Error())
+		logs.logger.Error(err.Error())
 		return 1
 	}
-	handler := server.New(server.Options{UI: web.Handler(), Logger: logs.logger})
-	if err := serve(ctx, logs.logger, ln, handler, cfg.Env, drainTimeout); err != nil {
-		logs.logger.Error("server failed: " + err.Error())
+	defer pool.Close()
+
+	switch cmd {
+	case "migrate":
+		err = migrate(ctx, logs.logger, pool)
+	case "seed":
+		err = seed(ctx, logs.logger, pool, cfg.Admin, password.Default)
+	default:
+		err = runServer(ctx, logs.logger, cfg, pool)
+	}
+	if err != nil {
+		logs.logger.Error(err.Error())
 		return 1
 	}
 	return 0
+}
+
+// runServer prepares the schema and serves until ctx is cancelled.
+func runServer(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *sql.DB) error {
+	if cfg.MigrateOnStart {
+		if err := migrate(ctx, logger, pool); err != nil {
+			return err
+		}
+	} else if err := requireSchema(ctx, pool); err != nil {
+		return err
+	}
+
+	ln, err := net.Listen("tcp", net.JoinHostPort("", strconv.Itoa(cfg.Port)))
+	if err != nil {
+		return fmt.Errorf("cannot listen: %w", err)
+	}
+	handler := server.New(server.Options{UI: web.Handler(), Logger: logger})
+	if err := serve(ctx, logger, ln, handler, cfg.Env, drainTimeout); err != nil {
+		return fmt.Errorf("server failed: %w", err)
+	}
+	return nil
 }
 
 // loadConfig reads the configuration from env, with .env in the working directory as

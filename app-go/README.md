@@ -4,9 +4,10 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I01** (configuration, logging, lifecycle). The binary serves the
-  health check and a "coming soon" page, logs every request, can export its logs over OTLP,
-  and shuts down gracefully. Progress is tracked in spec §16.
+- **Status:** iteration **I02** (database, migrations, password hashing, seed). The binary
+  connects to PostgreSQL, creates its schema (`tmock migrate`) and its first admin
+  (`tmock seed`), serves the health check and a "coming soon" page, logs every request, can
+  export its logs over OTLP, and shuts down gracefully. Progress is tracked in spec §16.
 
 ## Prerequisites
 
@@ -70,14 +71,39 @@ binaries to make: `make GO=/usr/local/go/bin/go GOFMT=/usr/local/go/bin/gofmt <t
 All commands run in `app-go/`. `make help` lists every target.
 
 ```bash
-make check     # gofmt check + go vet + go test
-make run       # serve on http://localhost:3000 (set PORT to change)
+cp .env.example .env   # once; it points at the database below and sets ADMIN_*
 make db-up     # PostgreSQL 17 on localhost:5432, user/password/database "tmock"
+make check     # gofmt check + go vet + go test (DB tests are skipped)
+make test-db   # all tests, including the DB integration tests, against make db-up
+make run       # migrate, seed and serve on http://localhost:3000 (set PORT to change)
 make otel-up   # optional: OpenTelemetry Collector on localhost:4318 (make otel-logs to watch)
 make db-down   # stop the containers; make db-reset also deletes the database volume
 ```
 
-What to check after I01 (the I00 checks still apply):
+The commands of the binary (`bin/tmock help`):
+
+| Command | What it does |
+|---|---|
+| `tmock serve` (default) | Runs the server. Refuses to start while migrations are pending, unless `MIGRATE_ON_START=true`, which applies them first |
+| `tmock migrate` | Applies pending migrations from `internal/db/migrations/` and exits. Safe to run concurrently |
+| `tmock seed` | Creates the first admin from `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` if there are no users; otherwise does nothing |
+
+What to check after I02 (the I00 and I01 checks still apply):
+
+| Check | Expected |
+|---|---|
+| `make test-db` | passes |
+| `make db-reset && make db-up && make migrate` | `applied migration 0001_init`; `make db-psql` then `\dt` lists the six tables and `schema_migrations` |
+| `make migrate` again | `the database schema is up to date` |
+| `bin/tmock migrate & bin/tmock migrate; wait` | one of them applies `0001_init`, the other reports the schema is up to date |
+| `DATABASE_ENABLE_SSL=true` with `DATABASE_HOST`/`_NAME`/`_USER`/`_PASSWORD` instead of `DATABASE_URL`, then `bin/tmock migrate` | exits: `the server does not accept TLS connections, but TLS is required` |
+| `make db-down`, then `bin/tmock migrate` | exits: `cannot connect to the database at postgres://tmock:xxxxx@localhost:5432/tmock…` (password masked) |
+| `make seed` | `created the first admin user (id 1)` (`tmock.user.seeded`) |
+| `make seed` again | `users already exist; nothing to seed` |
+| `make db-reset && make db-up && bin/tmock serve` | exits: `the database schema is not up to date (pending migrations: 0001)` |
+| `go test ./internal/password` | round-trip, wrong password, tampered hash, re-hash on lower iteration count |
+
+What to check after I01:
 
 | Check | Expected |
 |---|---|
@@ -85,8 +111,8 @@ What to check after I01 (the I00 checks still apply):
 | `curl localhost:3000/api/status` and `curl localhost:3000/status` | `{"status":"ok"}` |
 | Open <http://localhost:3000/> | the "Tmock — coming soon" page; the grey line reads "htmx 4.0.2 and Alpine 3.17.5 are running."; "Check API status" shows `{"status":"ok"}` |
 | Browser console | `tmock: htmx 4.0.2, Alpine 3.17.5`, no errors and no CSP violations |
-| `TMOCK_ENV=production make run` | exits at once: `SESSION_SECRET: is required when TMOCK_ENV=production` |
-| `OTEL_EXPORTER_OTLP_PROTOCOL=grpc make run` | exits at once: `only http/json is supported` |
+| `TMOCK_ENV=production bin/tmock serve` | exits at once: `SESSION_SECRET: is required when TMOCK_ENV=production` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL=grpc bin/tmock serve` | exits at once: `only http/json is supported` |
 | `make run`, then `curl localhost:3000/status` | no log line; with `LOG_LEVEL=debug make run`, a DEBUG `tmock.http.request` line |
 | Ctrl-C while running | `shutting down…` then `tmock stopped` (`tmock.shutdown.forced=false`); a second Ctrl-C exits at once |
 | `make db-up`, then `PGPASSWORD=tmock psql -h localhost -U tmock -d tmock -c 'select version()'` | PostgreSQL 17 |
@@ -105,7 +131,24 @@ make otel-logs
 Stop the collector (`docker compose --profile otel stop otel-collector`) and requests stay
 fast; after about 30 s of retries the console reports `OTLP log export failed`.
 
-Ports already taken? `TMOCK_DB_PORT=5433 make db-up`, `TMOCK_OTEL_PORT=14318 make otel-up`.
+Ports already taken? `TMOCK_DB_PORT=5433 make db-up`, `TMOCK_OTEL_PORT=14318 make otel-up`
+(and `TMOCK_DB_PORT=5433 make test-db`; point `DATABASE_URL` in `.env` at the same port).
+
+## Database
+
+PostgreSQL 17, through pgx's `database/sql` driver (spec §3.3). `internal/db` opens
+the pool and checks the connection at start-up, maps unique and foreign-key violations to
+`db.ErrUnique` and `db.ErrForeignKey` (re-exported by `internal/store`), and runs the
+migrations.
+
+- **Migrations** are `internal/db/migrations/NNNN_name.sql`, embedded in the binary, applied in
+  order, each in a transaction, under an advisory lock, and recorded in `schema_migrations`.
+  They are forward-only: never edit a released file; add a new one.
+- **DB tests** run only when `TMOCK_TEST_DATABASE_URL` is set (`make test-db` sets it).
+  `internal/db/dbtest` gives each test its own schema (`t_<random>` via `search_path`),
+  dropped afterwards, so tests run in parallel against one database.
+- **Passwords** are hashed with PBKDF2-HMAC-SHA-256, 600,000 iterations (`internal/password`,
+  spec §9.1).
 
 ## Configuration
 
@@ -146,6 +189,10 @@ dev/otelcol.yaml      collector config for `make otel-up`
 internal/api/         REST handlers (health check)
 internal/clientip/    the client-IP rule (spec §7.3)
 internal/config/      configuration and .env loading (spec §4)
+internal/db/          connection pool, typed errors, migration runner and migrations (spec §3.3, §5)
+internal/db/dbtest/   per-test schemas for DB integration tests
+internal/password/    PBKDF2 password hashing (spec §9.1)
+internal/store/       repositories over database/sql (users so far)
 internal/httpx/       error responses and panic recovery
 internal/logx/        log handlers, event names, trace context, request log (spec §2.4)
 internal/logx/otlp/   OTLP/HTTP JSON log exporter
@@ -159,7 +206,7 @@ static/               CSS, JS, images and vendored libraries, embedded with go:e
 ### Import boundary
 
 Third-party code may only be imported where spec §1.3 allows it: gomponents in
-`internal/web` and `internal/views/...`, and (from I02) pgx in `internal/db`. Backend
+`internal/web` and `internal/views/...`, and pgx in `internal/db`. Backend
 packages must not depend on the UI at all, even indirectly; only `cmd/tmock` joins the two.
 `internal/archtest` enforces this as part of `make test`, so a stray import fails the build.
 
