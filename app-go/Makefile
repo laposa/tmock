@@ -6,6 +6,10 @@ GO      ?= go
 GOFMT   ?= gofmt
 COMPOSE ?= docker compose
 
+# The database `make db-up` starts; DB integration tests create their own schemas in it.
+TMOCK_DB_PORT           ?= 5432
+TMOCK_TEST_DATABASE_URL ?= postgres://tmock:tmock@localhost:$(TMOCK_DB_PORT)/tmock?sslmode=disable
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -15,16 +19,30 @@ help: ## Show this help
 ## ── Go ──────────────────────────────────────────────────────────────────────
 
 .PHONY: run
-run: ## Run the server on :3000 (PORT overrides)
-	$(GO) run ./cmd/tmock
+run: build ## Migrate, seed (ADMIN_* from .env) and serve on :3000 (PORT overrides)
+	bin/tmock migrate
+	bin/tmock seed
+	bin/tmock serve
 
 .PHONY: build
 build: ## Build bin/tmock
 	$(GO) build -o bin/tmock ./cmd/tmock
 
+.PHONY: migrate
+migrate: build ## Apply pending database migrations
+	bin/tmock migrate
+
+.PHONY: seed
+seed: build ## Create the first admin from ADMIN_* if there are no users
+	bin/tmock seed
+
 .PHONY: test
-test: ## Run all tests
+test: ## Run unit and handler tests (DB tests are skipped)
 	$(GO) test ./...
+
+.PHONY: test-db
+test-db: ## Run all tests, including DB integration tests (needs make db-up)
+	TMOCK_TEST_DATABASE_URL='$(TMOCK_TEST_DATABASE_URL)' $(GO) test -count=1 ./...
 
 .PHONY: vet
 vet: ## Run go vet

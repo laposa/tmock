@@ -54,6 +54,9 @@ const (
 	AttrEnv            = "tmock.env"
 	AttrShutdownForced = "tmock.shutdown.forced"
 
+	AttrMigrationVersion = "tmock.migration.version"
+	AttrMigrationName    = "tmock.migration.name"
+
 	AttrOTLPRecords         = "tmock.otlp.records"
 	AttrOTLPEndpoint        = "tmock.otlp.endpoint"
 	AttrOTLPDroppedQueue    = "tmock.otlp.dropped.queue_full"

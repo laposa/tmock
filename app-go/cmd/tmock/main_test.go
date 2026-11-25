@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -16,7 +17,10 @@ import (
 	"time"
 
 	"github.com/laposa/tmock/app-go/internal/config"
+	"github.com/laposa/tmock/app-go/internal/db/dbtest"
 	"github.com/laposa/tmock/app-go/internal/logx"
+	"github.com/laposa/tmock/app-go/internal/password"
+	"github.com/laposa/tmock/app-go/internal/store"
 )
 
 func envOf(m map[string]string) config.Lookup { return config.MapLookup(m) }
@@ -252,4 +256,136 @@ func TestResourceAttributes(t *testing.T) {
 	if got := resourceAttributes(cfg)["service.name"]; got != "from-env" {
 		t.Errorf("OTEL_SERVICE_NAME must win, got %q", got)
 	}
+}
+
+func TestRunNeedsDatabase(t *testing.T) {
+	for _, cmd := range []string{"serve", "migrate", "seed"} {
+		var out bytes.Buffer
+		if code := run(context.Background(), []string{cmd}, envOf(nil), &out, io.Discard); code != 1 || !strings.Contains(out.String(), "no database configured") {
+			t.Errorf("%s: exit %d, output %q", cmd, code, out.String())
+		}
+	}
+	var errOut bytes.Buffer
+	if code := run(context.Background(), []string{"migrate", "now"}, envOf(nil), io.Discard, &errOut); code != 2 || !strings.Contains(errOut.String(), "migrate takes no arguments") {
+		t.Errorf("migrate now: exit %d, stderr %q", code, errOut.String())
+	}
+}
+
+// dbEnv is the configuration for a run against a fresh test schema.
+func dbEnv(t *testing.T) map[string]string {
+	return map[string]string{"DATABASE_URL": dbtest.Schema(t), "LOG_FORMAT": "json"}
+}
+
+// runJSON runs a command and returns its exit code and the log records it wrote.
+func runJSON(t *testing.T, ctx context.Context, env map[string]string, args ...string) (int, []map[string]any) {
+	t.Helper()
+	out := &syncBuffer{}
+	code := run(ctx, args, envOf(env), out, io.Discard)
+	return code, out.events(t)
+}
+
+func message(events []map[string]any) string {
+	var msgs []string
+	for _, e := range events {
+		msgs = append(msgs, fmt.Sprint(e["msg"]))
+	}
+	return strings.Join(msgs, "\n")
+}
+
+// Verify items: migrate creates the schema and is a no-op the second time; seed creates
+// the admin once and a second run does nothing.
+func TestRunMigrateAndSeed(t *testing.T) {
+	t.Parallel()
+	env := dbEnv(t)
+	ctx := context.Background()
+
+	if code, events := runJSON(t, ctx, env, "seed"); code != 1 || !strings.Contains(message(events), "pending migrations: 0001") {
+		t.Errorf("seed before migrate: exit %d\n%s", code, message(events))
+	}
+
+	code, events := runJSON(t, ctx, env, "migrate")
+	if code != 0 || findEvent(events, logx.EventMigrationApplied) == nil {
+		t.Fatalf("migrate: exit %d\n%s", code, message(events))
+	}
+	code, events = runJSON(t, ctx, env, "migrate")
+	if code != 0 || findEvent(events, logx.EventMigrationApplied) != nil || !strings.Contains(message(events), "up to date") {
+		t.Errorf("second migrate: exit %d\n%s", code, message(events))
+	}
+
+	code, events = runJSON(t, ctx, env, "seed")
+	if code != 1 || !strings.Contains(message(events), "ADMIN_EMAIL is required") || !strings.Contains(message(events), "ADMIN_PASSWORD is required") {
+		t.Errorf("seed without ADMIN_*: exit %d\n%s", code, message(events))
+	}
+
+	env["ADMIN_NAME"] = "Root"
+	env["ADMIN_EMAIL"] = "Root@Example.com"
+	env["ADMIN_PASSWORD"] = "correct horse"
+	code, events = runJSON(t, ctx, env, "seed")
+	e := findEvent(events, logx.EventUserSeeded)
+	if code != 0 || e == nil || e["level"] != "INFO" || e[logx.AttrUserID] == nil {
+		t.Fatalf("seed: exit %d, event %v\n%s", code, e, message(events))
+	}
+	for _, rec := range events {
+		if b, _ := json.Marshal(rec); strings.Contains(string(b), "correct horse") || strings.Contains(string(b), "pbkdf2") {
+			t.Errorf("the password or its hash was logged: %s", b)
+		}
+	}
+
+	code, events = runJSON(t, ctx, env, "seed")
+	if code != 0 || findEvent(events, logx.EventUserSeeded) != nil || !strings.Contains(message(events), "nothing to seed") {
+		t.Errorf("second seed: exit %d\n%s", code, message(events))
+	}
+
+	pool := dbtest.OpenDSN(t, env["DATABASE_URL"])
+	users, err := store.NewUsers(pool).List(ctx)
+	if err != nil || len(users) != 1 {
+		t.Fatalf("users %+v, %v", users, err)
+	}
+	u := users[0]
+	if u.Name != "Root" || u.Email != "Root@Example.com" || !u.Admin {
+		t.Errorf("admin %+v", u)
+	}
+	if ok, rehash, err := password.Verify("correct horse", u.PasswordHash); !ok || rehash || err != nil {
+		t.Errorf("stored hash: ok=%v rehash=%v err=%v", ok, rehash, err)
+	}
+}
+
+func TestRunServeChecksSchema(t *testing.T) {
+	t.Parallel()
+	env := dbEnv(t)
+	env["PORT"] = "1" // never reached: serve stops before listening
+	if code, events := runJSON(t, context.Background(), env, "serve"); code != 1 || !strings.Contains(message(events), "MIGRATE_ON_START=true") {
+		t.Errorf("serve on an empty schema: exit %d\n%s", code, message(events))
+	}
+
+	// With MIGRATE_ON_START it migrates and then serves; the test stops the server as
+	// soon as it reports that it is listening.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env["PORT"] = fmt.Sprint(ln.Addr().(*net.TCPAddr).Port)
+	ln.Close()
+	env["MIGRATE_ON_START"] = "true"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	out := &stopOnStart{cancel: cancel}
+	code := run(ctx, []string{"serve"}, envOf(env), out, io.Discard)
+	events := out.events(t)
+	if code != 0 || findEvent(events, logx.EventMigrationApplied) == nil || findEvent(events, logx.EventServerStopped) == nil {
+		t.Errorf("serve with MIGRATE_ON_START: exit %d\n%s", code, message(events))
+	}
+}
+
+// stopOnStart cancels the server's context once it logs tmock.server.started.
+type stopOnStart struct {
+	syncBuffer
+	cancel context.CancelFunc
+}
+
+func (s *stopOnStart) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte(logx.EventServerStarted)) {
+		s.cancel()
+	}
+	return s.syncBuffer.Write(p)
 }

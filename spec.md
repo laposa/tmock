@@ -162,7 +162,7 @@ at once.
 
 ```
 app-go/
-├── go.mod                    # module github.com/laposa/tmock/app-go; requires gomponents only
+├── go.mod                    # module github.com/laposa/tmock/app-go; requires gomponents and pgx
 ├── Makefile                  # run, test, test-db, vet, fmt, db-up, db-down, migrate, seed,
 │                             # vendor-js, docker
 ├── compose.yaml              # local PostgreSQL for development and tests
@@ -417,7 +417,7 @@ and MUST NOT appear in `go.mod`.
 
 The standard library has `database/sql` but no PostgreSQL driver. The app uses
 **`github.com/jackc/pgx/v5`** (v5.11.0 at the time of writing; requires Go 1.25+ and supports
-PostgreSQL 14+) through its `database/sql` adapter:
+PostgreSQL 14+; tmock targets PostgreSQL 17 only) through its `database/sql` adapter:
 
 - `internal/db` blank-imports `github.com/jackc/pgx/v5/stdlib` and opens the pool with
   `sql.Open("pgx", dsn)`. No other package imports pgx (§1.3).
@@ -433,8 +433,10 @@ PostgreSQL 14+) through its `database/sql` adapter:
 - Errors: `internal/db` unwraps `*pgconn.PgError` and maps SQLSTATE `23505` (unique_violation) and
   `23503` (foreign_key_violation) to the typed errors that `store` returns (§5.3). Only
   `internal/db` sees the pgx error type.
-- `jsonb` columns are scanned into `[]byte` (or `json.RawMessage`) and decoded with
-  `encoding/json`; `bytea` into `[]byte`; `timestamptz` into `time.Time`.
+- `jsonb` columns are scanned into `[]byte` and decoded with `encoding/json`; `bytea` into
+  `[]byte`; `timestamptz` into `time.Time`. A nullable `jsonb` column cannot be scanned into
+  `json.RawMessage` directly: `database/sql` does not store `NULL` in a named byte-slice type
+  (found in I02; `json.RawMessage` works for `NOT NULL` columns).
 
 ---
 
@@ -458,7 +460,7 @@ configuration can be reused with few edits.
 | `PORT` | `3000` | Listen port |
 | `TZ` | system | Time zone for templates (`date` filter) |
 | `TMOCK_ENV` | `development` | `production` → secure cookies, `upgrade-insecure-requests`, `SESSION_SECRET` required |
-| `DATABASE_URL` | — | Full DSN, passed to pgx (§3.3). If unset, it is built from the variables below. Until I02 no database is needed, so leaving all of them unset is valid; setting only some of `DATABASE_HOST`, `_NAME`, `_USER` is an error |
+| `DATABASE_URL` | — | Full DSN, passed to pgx (§3.3). If unset, it is built from the variables below. Required by `serve`, `migrate` and `seed`, which stop with a clear message when neither is set (`help` needs no database); setting only some of `DATABASE_HOST`, `_NAME`, `_USER` is an error |
 | `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD` | —, `5432`, … | PostgreSQL connection |
 | `DATABASE_ENABLE_SSL` | `false` | `true` → `sslmode=require` |
 | `SESSION_SECRET` | random per process outside production | Secret for hashing session IDs; at least 32 characters (for example `openssl rand -base64 48`) |
@@ -485,7 +487,7 @@ configuration can be reused with few edits.
 | `OTEL_BLRP_MAX_QUEUE_SIZE` | `2048` | Records buffered before new ones are dropped |
 | `OTEL_BLRP_MAX_EXPORT_BATCH_SIZE` | `512` | Records per export request (must be ≤ the queue size) |
 | `OTEL_BLRP_EXPORT_TIMEOUT` | `30000` | Total time in ms for one batch, including retries |
-| `MIGRATE_ON_START` | `false` | Run migrations before serving |
+| `MIGRATE_ON_START` | `false` | Run migrations before serving. When `false`, `serve` refuses to start while migrations are pending |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | `Admin`, —, — | Used by `tmock seed` only; email and password required |
 
 ---
@@ -563,7 +565,12 @@ Notes:
 
 - Migrations are plain `.sql` files embedded from `internal/db/migrations/`, applied in lexical
   order and tracked in `schema_migrations (version text PRIMARY KEY, applied_at timestamptz)`.
-- Each migration runs in a transaction, under `pg_advisory_lock`, so concurrent starts are safe.
+  Files are named `NNNN_name.sql`; `NNNN` is the version stored, `name` is logged
+  (`tmock.db.migration.applied`). Any other file name stops the run.
+- Each migration runs in a transaction, under `pg_advisory_lock`, so concurrent starts are safe:
+  a run that waited for the lock finds the work done and applies nothing.
+- `serve` and `seed` check that no migration is pending and stop with a message pointing at
+  `tmock migrate` or `MIGRATE_ON_START=true` otherwise.
 - Migrations are forward-only. A mistake is fixed with a new migration.
 - `0001_init.sql` creates the schema in §5.1.
 
@@ -1455,7 +1462,7 @@ Each block below is ready to paste as a GitHub issue. The title is the heading.
 - The users store and `tmock seed` (creates the admin from `ADMIN_*` if there are no users).
 
 **Verify locally**
-- [ ] `make test-db` passes against PostgreSQL 14 and 17 (`PG_VERSION=14 make db-up`).
+- [ ] `make test-db` passes against PostgreSQL 17.
 - [ ] DB tests cover NULLs, `bytea` and `jsonb` round-trips, unique and foreign-key violations
       mapped to typed errors, and a context timeout cancelling `pg_sleep`.
 - [ ] A fresh DB plus `tmock migrate` creates the schema; running it again is a no-op; two
@@ -1758,8 +1765,8 @@ Update this table as issues are created and closed.
 | ID | Title | Issue | Status | Notes |
 |---|---|---|---|---|
 | I00 | Go scaffolding | #31 | In review | htmx 4.0.2, Alpine CSP 3.17.5, gomponents v1.4.0 |
-| I01 | Configuration, logging, lifecycle | #34 | In review | own OTLP exporter; `internal/clientip` added |
-| I02 | Database, migrations, passwords, seed | | Planned | |
+| I01 | Configuration, logging, lifecycle | #34 | Done | own OTLP exporter; `internal/clientip` added |
+| I02 | Database, migrations, passwords, seed | | In review | pgx v5.11.0; `internal/db/dbtest` helper; PostgreSQL 17 only |
 | I03 | HTTP foundation | | Planned | |
 | I04 | Login, sessions, UI shell | | Planned | |
 | I05 | Services | | Planned | |
