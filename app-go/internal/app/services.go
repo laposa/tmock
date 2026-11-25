@@ -154,10 +154,11 @@ func validateService(f store.ServiceFields) error {
 	return nil
 }
 
-// isUpstreamURL reports whether s is an absolute http or https URL with a host.
+// isUpstreamURL reports whether s is an absolute http or https URL with a host name.
+// Hostname, not Host: "http://:8080" has a Host (":8080") but no host to connect to.
 func isUpstreamURL(s string) bool {
 	u, err := url.Parse(s)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.Opaque == ""
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != "" && u.Opaque == ""
 }
 
 func serviceFromStore(s store.Service) Service {

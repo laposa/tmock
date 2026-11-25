@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 
 	"github.com/laposa/tmock/app-go/internal/app"
@@ -52,9 +53,7 @@ func trigger(w http.ResponseWriter, name string, detail map[string]string) {
 		}
 	}
 	d := map[string]string{"target": "body"}
-	for k, v := range detail {
-		d[k] = v
-	}
+	maps.Copy(d, detail)
 	events[name] = d
 	b, err := json.Marshal(events)
 	if err != nil {

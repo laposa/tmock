@@ -47,6 +47,7 @@ func TestServiceValidation(t *testing.T) {
 		{"url without scheme", app.ServiceInput{Path: "s", Name: "S", UpstreamURL: "example.com"}, "upstreamUrl", "must be an absolute http or https URL"},
 		{"url ftp", app.ServiceInput{Path: "s", Name: "S", UpstreamURL: "ftp://example.com"}, "upstreamUrl", "must be an absolute http or https URL"},
 		{"url without host", app.ServiceInput{Path: "s", Name: "S", UpstreamURL: "http://"}, "upstreamUrl", "must be an absolute http or https URL"},
+		{"url with only a port", app.ServiceInput{Path: "s", Name: "S", UpstreamURL: "http://:8080"}, "upstreamUrl", "must be an absolute http or https URL"},
 		{"url malformed", app.ServiceInput{Path: "s", Name: "S", UpstreamURL: "http://[::1"}, "upstreamUrl", "must be an absolute http or https URL"},
 		{"url too long", app.ServiceInput{Path: "s", Name: "S", UpstreamURL: "http://u/" + strings.Repeat("x", 2040)}, "upstreamUrl", "must be 1–2048 characters"},
 	}
