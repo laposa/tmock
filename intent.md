@@ -21,7 +21,7 @@ API using per-client access tokens.
 
 | Problem today | What the rewrite gives us |
 |---|---|
-| Two large npm dependency trees (NestJS + Vue/Vuetify/Vite/CodeMirror, ~60 direct packages) that need constant upgrades and security patching. | A Go codebase with two dependencies: the **pgx** PostgreSQL driver for the backend and **Gomponents** for the UI (plus vendored HTMX/AlpineJS files, and a stylesheet generated at development time with the Tailwind standalone CLI from Penguin UI components). Everything else is the standard library. |
+| Two large npm dependency trees (NestJS + Vue/Vuetify/Vite/CodeMirror, ~60 direct packages) that need constant upgrades and security patching. | A Go codebase with two dependencies: the **pgx** PostgreSQL driver for the backend and **Gomponents** for the UI (plus vendored HTMX/AlpineJS files and one hand-written stylesheet). Everything else is the standard library. |
 | A build pipeline with two Node builds and runtime patching of the compiled JS bundle (`${API_ENDPOINT}` injection). | A single static binary, built with `go build`, embedding all assets. |
 | Request conditions on scenarios are evaluated with JavaScript `eval()`. Any logged-in user can run arbitrary code on the server. | A small, safe, purpose-built expression language. |
 | Client tokens are stored in plaintext. Sessions live in process memory and are lost on every restart. | Hashed tokens, passwords hashed with stdlib crypto, sessions in PostgreSQL. |
@@ -70,8 +70,10 @@ API using per-client access tokens.
 - New product features. Ideas go to spec §14 ("Later").
 - Compatibility with the legacy app beyond what is free: no shared database, no identical error
   messages or status codes, no support for the Vue app.
-- A copy of the Vuetify UI or its look. The new UI keeps the same pages and the same workflows, but
-  uses Penguin UI's Alpine + Tailwind components with their default theme (spec §10.6).
+- A pixel-perfect copy of the Vuetify UI. The new UI keeps the same pages, the same workflows and a
+  similar dark/indigo look, with styles copied from the legacy app into plain CSS (spec §10.6). It
+  is built from small, separate components, so that the look and the order of elements can change
+  later without rewriting pages (spec §10.7).
 - Full LiquidJS compatibility. We implement the subset that mock bodies need (spec §8).
 - Full JavaScript-expression compatibility for request conditions. We support a comparison and
   boolean subset (spec §7.4); the legacy import reports conditions that don't fit.
