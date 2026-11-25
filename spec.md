@@ -659,6 +659,7 @@ Optional fields are always present, as `null` when unset.
 | Not logged in, bad credentials, unknown client token | `401` |
 | Logged in but not allowed (not admin, token for another client, disallowed field) | `403` |
 | Not found, unknown route | `404` |
+| Known route, wrong method | `405`, with an `Allow` header |
 | Duplicate (path, name, email) | `409` |
 | Body over the limit | `413` |
 | Unexpected error or panic | `500` (details logged, never returned) |
@@ -673,6 +674,20 @@ Every error response has one shape:
 
 `details` is present only for validation errors and maps the JSON field path (for example
 `condition.and[1].ip`) to a short message. The same messages are shown in the UI forms.
+
+Request bodies are decoded by `httpx.DecodeJSON`: an empty body, malformed JSON, a body that is
+not an object (`null` included), anything after the object, and an unknown field
+(`details: {"nmae": "unknown field"}`) are `400`; a value of the wrong type is `400` with
+`details` keyed by its path (`items[1].label: "must be a string"`). `encoding/json` names an
+unknown field without its path, so one inside a nested object is reported by its bare name. With
+Go 1.27's `encoding/json`, a wrong type inside an `Optional[T]` field is reported without the
+field name (the message says which type was expected); Go 1.25 names the field (found in I03).
+A path id must be written canonically (`/api/service/7`); `0`, `+7` and `007` are `400`.
+
+Use cases in `internal/app` return `*app.Error` (kinds `Invalid`, `Unauthorized`, `Forbidden`,
+`NotFound`, `Conflict`) for expected failures; its message and details are safe to show. The REST
+API writes it with `httpx.WriteErr` as the body above, the UI shows it as a toast and next to the
+form fields (§10.2). Any other error is unexpected: `500`, logged, never shown.
 
 ### 6.3 Authentication on the API
 
@@ -1815,8 +1830,8 @@ Update this table as issues are created and closed.
 |---|---|---|---|---|
 | I00 | Go scaffolding | #31 | In review | htmx 4.0.2, Alpine CSP 3.17.5, gomponents v1.4.0 |
 | I01 | Configuration, logging, lifecycle | #34 | Done | own OTLP exporter; `internal/clientip` added |
-| I02 | Database, migrations, passwords, seed | | In review | pgx v5.11.0; `internal/db/dbtest` helper; PostgreSQL 17 only |
-| I03 | HTTP foundation | | Planned | |
+| I02 | Database, migrations, passwords, seed | #36 | Done | pgx v5.11.0; `internal/db/dbtest` helper; PostgreSQL 17 only |
+| I03 | HTTP foundation | #40 | In review | JSON 405 with `Allow`; `app.Error` kinds; Optional field name caveat on Go 1.27 |
 | I04 | Login, sessions, UI shell | | Planned | |
 | I05 | Services | | Planned | |
 | I06 | Scenarios | | Planned | |

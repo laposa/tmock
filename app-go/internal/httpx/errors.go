@@ -1,9 +1,11 @@
-// Package httpx holds HTTP helpers shared by the API and the UI: the error response format
-// (spec §6.2) and panic recovery. I03 adds JSON decoding, validation and Optional[T].
+// Package httpx holds the HTTP plumbing shared by the REST API and the UI (spec §6, §9):
+// the error format, JSON decoding and encoding, Optional[T], the validation helper, panic
+// recovery, security headers, cross-origin protection and the proxy's CORS middleware.
 package httpx
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -19,6 +21,33 @@ type ErrorBody struct {
 	Details map[string]string `json:"details,omitempty"`
 }
 
+// PublicError is an error whose status, message and details may be shown to the client.
+// *Error and the use-case errors of internal/app implement it; any other error is
+// answered with a generic 500 and logged.
+type PublicError interface {
+	error
+	StatusCode() int
+	PublicMessage() string
+	FieldDetails() map[string]string
+}
+
+// Error is an HTTP-level error, such as a malformed request body.
+type Error struct {
+	Status  int
+	Message string
+	Details map[string]string // field path → message, for validation errors
+}
+
+// NewError returns an *Error with the given status and message.
+func NewError(status int, message string) *Error {
+	return &Error{Status: status, Message: message}
+}
+
+func (e *Error) Error() string                   { return fmt.Sprintf("%d %s", e.Status, e.Message) }
+func (e *Error) StatusCode() int                 { return e.Status }
+func (e *Error) PublicMessage() string           { return e.Message }
+func (e *Error) FieldDetails() map[string]string { return e.Details }
+
 // WriteError writes an error response in the §6.2 format.
 func WriteError(w http.ResponseWriter, status int, message string, details map[string]string) {
 	b, err := json.Marshal(ErrorBody{Status: status, Message: message, Details: details})
@@ -32,6 +61,23 @@ func WriteError(w http.ResponseWriter, status int, message string, details map[s
 	h.Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
 	_, _ = w.Write(append(b, '\n'))
+}
+
+// WriteErr answers a request with err: a PublicError as it is, anything else as a 500
+// whose details are logged, never returned (spec §6.2).
+func WriteErr(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err error) {
+	var pe PublicError
+	if errors.As(err, &pe) {
+		WriteError(w, pe.StatusCode(), pe.PublicMessage(), pe.FieldDetails())
+		return
+	}
+	logger.LogAttrs(r.Context(), slog.LevelError, "request failed: "+err.Error(),
+		slog.String(logx.AttrHTTPMethod, r.Method),
+		slog.String(logx.AttrURLPath, r.URL.Path),
+		slog.String(logx.AttrErrorType, fmt.Sprintf("%T", err)),
+		slog.String(logx.AttrExceptionMessage, err.Error()),
+	)
+	WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 }
 
 // Recover turns a panic in next into a 500 response and a tmock.http.panic event, so one
@@ -60,10 +106,29 @@ func Recover(logger *slog.Logger, next http.Handler) http.Handler {
 			if tw.wrote {
 				panic(http.ErrAbortHandler)
 			}
+			// Drop what the handler had prepared for its own response (Content-Length,
+			// Content-Encoding, an upstream's Set-Cookie, …): it does not fit the 500.
+			h := w.Header()
+			for k := range h {
+				if !keepOnPanic[k] {
+					delete(h, k)
+				}
+			}
 			WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 		}()
 		next.ServeHTTP(tw, r)
 	})
+}
+
+// keepOnPanic are the headers set by tmock's own middleware (spec §9.4), which stay on
+// the 500 written after a panic.
+var keepOnPanic = map[string]bool{
+	"Content-Security-Policy":      true,
+	"Cross-Origin-Opener-Policy":   true,
+	"Cross-Origin-Resource-Policy": true,
+	"Referrer-Policy":              true,
+	"Strict-Transport-Security":    true,
+	"X-Frame-Options":              true,
 }
 
 // writeTracker remembers whether the response has been started.

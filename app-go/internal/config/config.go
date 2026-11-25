@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -198,10 +199,8 @@ func (p *parser) oneOf(key, def string, allowed ...string) string {
 	if !ok {
 		return def
 	}
-	for _, a := range allowed {
-		if v == a {
-			return v
-		}
+	if slices.Contains(allowed, v) {
+		return v
 	}
 	p.problem(key, fmt.Sprintf("must be one of %s, got %q", strings.Join(allowed, ", "), v))
 	return def
@@ -357,7 +356,7 @@ func (p *parser) origins(key string) []string {
 		return nil
 	}
 	var out []string
-	for _, o := range strings.Split(raw, ",") {
+	for o := range strings.SplitSeq(raw, ",") {
 		o = strings.TrimSpace(o)
 		if o == "" {
 			continue

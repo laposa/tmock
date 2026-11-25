@@ -35,7 +35,7 @@ func (c *capture) events(t *testing.T, name string) []map[string]any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var out []map[string]any
-	for _, line := range bytes.Split(bytes.TrimSpace(c.buf.Bytes()), []byte("\n")) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(c.buf.Bytes()), []byte("\n")) {
 		if len(line) == 0 {
 			continue
 		}
