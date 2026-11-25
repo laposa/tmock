@@ -830,8 +830,9 @@ Each condition node has exactly one predicate, plus an optional `not` that negat
   `headerRegex` predicate anywhere in its tree. `{"and": []}` is empty. Empty conditions cannot be
   enabled (§6.4).
 - Header names are case-insensitive. Multiple values of one header are joined with `", "`.
-- **Client IP:** the first non-empty value of `cf-connecting-ip`, then `x-real-ip`, then the first
-  entry of `x-forwarded-for`, then the socket's remote address (without the port), trimmed.
+- **Client IP:** the first value that is a valid IP address of `cf-connecting-ip`, then `x-real-ip`,
+  then the first entry of `x-forwarded-for`, then the socket's remote address (without the port),
+  trimmed. Header values that are not IP addresses are skipped, so they never reach logs or conditions.
   IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`) are normalised to IPv4 on both sides.
 
 ### 7.4 Request conditions (scenario `requestCondition`)
