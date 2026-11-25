@@ -49,10 +49,9 @@ func TestLogin(t *testing.T) {
 	if err != nil || u != (app.User{ID: ann.ID, Name: "Ann", Email: "Ann@Example.com", Admin: true}) {
 		t.Fatalf("Login: %+v, %v", u, err)
 	}
-	ev := logs.Events(logx.EventLoginSucceeded)
-	if len(ev) != 1 || ev[0].Level != slog.LevelInfo ||
-		ev[0].Attrs[logx.AttrUserID] != "1" || ev[0].Attrs[logx.AttrClientAddress] != "192.0.2.1" {
-		t.Errorf("succeeded events %+v", ev)
+	// The success event is logged by internal/auth once the session exists.
+	if ev := logs.Events(logx.EventLoginSucceeded); len(ev) != 0 {
+		t.Errorf("Login logged success itself: %+v", ev)
 	}
 
 	// A wrong password and an unknown email give the same error.

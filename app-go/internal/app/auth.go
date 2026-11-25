@@ -22,13 +22,14 @@ type Credentials struct {
 // login attempt cannot tell which it was (spec §9.1).
 const LoginFailedMessage = "Invalid email or password"
 
-// Login checks the credentials and returns the user. The session itself is started by
-// internal/auth. clientAddr is only logged.
+// Login checks the credentials and returns the user. The caller then starts the session
+// with internal/auth, which logs tmock.auth.login.succeeded once the session exists.
+// clientAddr is only logged.
 //
 // An unknown email and a wrong password both return the same Unauthorized error, and
 // both cost one password hash (spec §9.1). A hash with fewer iterations than the current
-// setting is replaced after a successful login. Every attempt is logged as
-// tmock.auth.login.succeeded or tmock.auth.login.failed, never with the email or password.
+// setting is replaced after a successful login. A failed attempt is logged as
+// tmock.auth.login.failed, never with the email or password.
 func (a *App) Login(ctx context.Context, in Credentials, clientAddr string) (User, error) {
 	var v httpx.Validator
 	v.Required("email", strings.TrimSpace(in.Email) != "")
@@ -55,12 +56,6 @@ func (a *App) Login(ctx context.Context, in Credentials, clientAddr string) (Use
 	if rehash {
 		a.rehash(ctx, u.ID, in.Password)
 	}
-
-	a.logger.LogAttrs(ctx, slog.LevelInfo, fmt.Sprintf("user %d logged in", u.ID),
-		slog.String(logx.AttrEventName, logx.EventLoginSucceeded),
-		slog.Int64(logx.AttrUserID, u.ID),
-		slog.String(logx.AttrClientAddress, clientAddr),
-	)
 	return UserFromStore(u), nil
 }
 

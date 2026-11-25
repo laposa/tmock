@@ -24,7 +24,10 @@ func (r Record) Text() string {
 	var b strings.Builder
 	b.WriteString(r.Message)
 	for k, v := range r.Attrs {
-		b.WriteString(" " + k + "=" + v)
+		b.WriteString(" ")
+		b.WriteString(k)
+		b.WriteString("=")
+		b.WriteString(v)
 	}
 	return b.String()
 }

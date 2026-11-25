@@ -1,5 +1,6 @@
 // Package auth holds the sessions shared by the REST API and the UI (spec §9.2): the
-// session cookie, session lookup, logout, the hourly sweep of expired sessions, and the
+// session cookie, session start (and its login event), lookup, logout, the hourly sweep of
+// expired sessions, and the
 // `user` and `admin` guards of the REST API (spec §6.3).
 //
 // The cookie holds 32 random bytes; the database stores only their HMAC-SHA256 under
@@ -62,7 +63,7 @@ type Options struct {
 	Secret []byte
 	// Secure sets the cookie's Secure attribute (production).
 	Secure bool
-	// Logger receives the logout and sweep events. Nil means slog.Default().
+	// Logger receives the login, logout and sweep events. Nil means slog.Default().
 	Logger *slog.Logger
 }
 
@@ -78,9 +79,11 @@ func New(st Store, opts Options) *Sessions {
 	return &Sessions{store: st, secret: opts.Secret, secure: opts.Secure, logger: logger}
 }
 
-// Start creates a new session for userID and sets the session cookie on w. Each login
-// gets a new session id (spec §9.2).
-func (s *Sessions) Start(ctx context.Context, w http.ResponseWriter, userID int64) error {
+// Start creates a new session for userID after a successful login, sets the session
+// cookie on w and logs tmock.auth.login.succeeded with clientAddr. The event is logged
+// here, once the session exists, so a login that fails at this step is not reported as
+// a success. Each login gets a new session id (spec §9.2).
+func (s *Sessions) Start(ctx context.Context, w http.ResponseWriter, userID int64, clientAddr string) error {
 	raw := make([]byte, tokenBytes)
 	_, _ = rand.Read(raw) // never fails (crypto/rand)
 	token := base64.RawURLEncoding.EncodeToString(raw)
@@ -88,6 +91,12 @@ func (s *Sessions) Start(ctx context.Context, w http.ResponseWriter, userID int6
 		return fmt.Errorf("creating a session: %w", err)
 	}
 	http.SetCookie(w, s.cookie(token, int(Lifetime/time.Second)))
+	logx.SetUserID(ctx, userID)
+	s.logger.LogAttrs(ctx, slog.LevelInfo, fmt.Sprintf("user %d logged in", userID),
+		slog.String(logx.AttrEventName, logx.EventLoginSucceeded),
+		slog.Int64(logx.AttrUserID, userID),
+		slog.String(logx.AttrClientAddress, clientAddr),
+	)
 	return nil
 }
 

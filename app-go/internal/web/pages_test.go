@@ -14,7 +14,7 @@ import (
 func sessionCookie(t *testing.T, s *auth.Sessions, userID int64) *http.Cookie {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	if err := s.Start(context.Background(), rec, userID); err != nil {
+	if err := s.Start(context.Background(), rec, userID, "192.0.2.1"); err != nil {
 		t.Fatal(err)
 	}
 	return rec.Result().Cookies()[0]

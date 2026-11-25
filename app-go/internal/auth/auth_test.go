@@ -33,7 +33,7 @@ func newSessions(t *testing.T, secure bool) (*auth.Sessions, *authtest.Store, *l
 func login(t *testing.T, s *auth.Sessions, userID int64) *http.Cookie {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	if err := s.Start(context.Background(), rec, userID); err != nil {
+	if err := s.Start(context.Background(), rec, userID, "192.0.2.1"); err != nil {
 		t.Fatal(err)
 	}
 	cookies := rec.Result().Cookies()
@@ -55,7 +55,7 @@ func TestCookieAttributes(t *testing.T) {
 	for _, secure := range []bool{false, true} {
 		s, _, _ := newSessions(t, secure)
 		rec := httptest.NewRecorder()
-		if err := s.Start(context.Background(), rec, 1); err != nil {
+		if err := s.Start(context.Background(), rec, 1, "192.0.2.1"); err != nil {
 			t.Fatal(err)
 		}
 		header := rec.Header().Get("Set-Cookie")
@@ -77,6 +77,11 @@ func TestCookieAttributes(t *testing.T) {
 func TestStartUserEnd(t *testing.T) {
 	s, st, logs := newSessions(t, false)
 	c := login(t, s, 2)
+	started := logs.Events(logx.EventLoginSucceeded)
+	if len(started) != 1 || started[0].Level != slog.LevelInfo ||
+		started[0].Attrs[logx.AttrUserID] != "2" || started[0].Attrs[logx.AttrClientAddress] != "192.0.2.1" {
+		t.Errorf("login events %+v", started)
+	}
 
 	u, err := s.User(request(c))
 	if err != nil || u.ID != 2 || u.Name != "Bob" || u.Admin {
@@ -114,6 +119,18 @@ func TestStartUserEnd(t *testing.T) {
 	}
 	if n := len(logs.Events(logx.EventLogout)); n != 1 {
 		t.Errorf("%d logout events", n)
+	}
+}
+
+// A session that cannot be stored is no login: no cookie, no success event.
+func TestStartFailure(t *testing.T) {
+	s, _, logs := newSessions(t, false)
+	rec := httptest.NewRecorder()
+	if err := s.Start(context.Background(), rec, 99, "192.0.2.1"); err == nil { // no such user
+		t.Fatal("no error")
+	}
+	if rec.Header().Get("Set-Cookie") != "" || len(logs.Events(logx.EventLoginSucceeded)) != 0 {
+		t.Errorf("cookie %q, events %+v", rec.Header().Get("Set-Cookie"), logs.All())
 	}
 }
 

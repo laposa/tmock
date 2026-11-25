@@ -320,11 +320,14 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
 
 .button--large { height: var(--control-height-large); padding: 0 1.25rem; font-size: 1rem; }
 
+/* No transition into the disabled state: Alpine disables buttons as the page loads
+   (requiredFields), and a fade would show as a flicker. */
 .button:disabled {
   color: var(--color-disabled-text);
   background: var(--color-disabled-bg);
   box-shadow: none;
   cursor: default;
+  transition: none;
 }
 
 /* ── field.go ──────────────────────────────────────────────────────────────── */

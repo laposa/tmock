@@ -65,9 +65,10 @@ func (u *ui) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := app.Credentials{Email: r.PostForm.Get("email"), Password: r.PostForm.Get("password")}
-	user, err := u.app.Login(r.Context(), in, clientip.From(r))
+	addr := clientip.From(r)
+	user, err := u.app.Login(r.Context(), in, addr)
 	if err == nil {
-		err = u.sessions.Start(r.Context(), w, user.ID)
+		err = u.sessions.Start(r.Context(), w, user.ID, addr)
 	}
 	var appErr *app.Error
 	switch {

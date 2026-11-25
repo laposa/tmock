@@ -43,9 +43,10 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteErr(w, r, a.logger, err)
 		return
 	}
-	u, err := a.app.Login(r.Context(), in, clientip.From(r))
+	addr := clientip.From(r)
+	u, err := a.app.Login(r.Context(), in, addr)
 	if err == nil {
-		err = a.sessions.Start(r.Context(), w, u.ID)
+		err = a.sessions.Start(r.Context(), w, u.ID, addr)
 	}
 	if err != nil {
 		httpx.WriteErr(w, r, a.logger, err)
