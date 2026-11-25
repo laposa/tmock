@@ -20,7 +20,8 @@ func TestFrom(t *testing.T) {
 		{"first forwarded-for entry", map[string]string{"X-Forwarded-For": " 198.51.100.3 , 10.0.0.2"}, "10.0.0.1:1", "198.51.100.3"},
 		{"empty headers are skipped", map[string]string{"CF-Connecting-IP": " ", "X-Forwarded-For": ", 10.0.0.2"}, "10.0.0.1:1", "10.0.0.1"},
 		{"mapped in header", map[string]string{"X-Real-IP": "::ffff:198.51.100.9"}, "10.0.0.1:1", "198.51.100.9"},
-		{"not an IP is kept", map[string]string{"X-Real-IP": "unknown"}, "10.0.0.1:1", "unknown"},
+		{"not an IP is skipped", map[string]string{"X-Real-IP": "unknown", "X-Forwarded-For": "198.51.100.4"}, "10.0.0.1:1", "198.51.100.4"},
+		{"injected text is skipped", map[string]string{"CF-Connecting-IP": "1.2.3.4\nfake log line"}, "10.0.0.1:1", "10.0.0.1"},
 		{"remote without port", nil, "192.0.2.5", "192.0.2.5"},
 	}
 	for _, tc := range cases {

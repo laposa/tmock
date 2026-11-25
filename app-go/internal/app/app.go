@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"log/slog"
 
+	"github.com/laposa/tmock/app-go/internal/password"
 	"github.com/laposa/tmock/app-go/internal/store"
 )
 
@@ -26,13 +27,34 @@ import (
 // API and the UI.
 type App struct {
 	logger *slog.Logger
+	hasher password.Hasher
 	users  *store.Users
 }
 
-// New returns the use cases on pool. A nil logger means slog.Default().
-func New(pool *sql.DB, logger *slog.Logger) *App {
+// Options configures the use cases. The zero value is ready for production.
+type Options struct {
+	Logger *slog.Logger    // nil means slog.Default()
+	Hasher password.Hasher // the zero value uses password.DefaultIterations
+}
+
+// New returns the use cases on pool.
+func New(pool *sql.DB, opts Options) *App {
+	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &App{logger: logger, users: store.NewUsers(pool)}
+	return &App{logger: logger, hasher: opts.Hasher, users: store.NewUsers(pool)}
+}
+
+// User is a user as the API and the UI show it (spec §6.1): never with the password.
+type User struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Admin bool   `json:"admin"`
+}
+
+// UserFromStore converts a users row. internal/auth uses it for the user of a session.
+func UserFromStore(u store.User) User {
+	return User{ID: u.ID, Name: u.Name, Email: u.Email, Admin: u.Admin}
 }

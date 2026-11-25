@@ -13,17 +13,44 @@ import (
 
 	g "maragu.dev/gomponents"
 
+	"github.com/laposa/tmock/app-go/internal/app"
+	"github.com/laposa/tmock/app-go/internal/auth"
 	"github.com/laposa/tmock/app-go/internal/logx"
-	"github.com/laposa/tmock/app-go/internal/views/pages"
+	"github.com/laposa/tmock/app-go/internal/views/layout"
 	"github.com/laposa/tmock/app-go/static"
 )
 
-// Handler returns the UI handler. It serves / and /static/*; everything else is 404.
-func Handler() http.Handler {
+// Deps are what the UI handlers need.
+type Deps struct {
+	App      *app.App
+	Sessions *auth.Sessions
+	Logger   *slog.Logger // nil means slog.Default()
+}
+
+// ui holds the handlers' dependencies.
+type ui struct {
+	app      *app.App
+	sessions *auth.Sessions
+	logger   *slog.Logger
+}
+
+// Handler returns the UI handler: the pages of spec §10.3 built so far, login and logout,
+// and /static/*. Everything else is 404.
+func Handler(d Deps) http.Handler {
+	u := &ui{app: d.App, sessions: d.Sessions, logger: d.Logger}
+	if u.logger == nil {
+		u.logger = slog.Default()
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		render(w, r, http.StatusOK, pages.ComingSoon())
-	})
+	mux.HandleFunc("GET /login", u.loginPage)
+	mux.HandleFunc("POST /login", u.login)
+	mux.HandleFunc("POST /logout", u.logout)
+	// Placeholders until each page's iteration (spec §15.3).
+	mux.Handle("GET /{$}", u.placeholder(layout.Clients, "Clients", "I07", false))
+	mux.Handle("GET /services", u.placeholder(layout.Services, "Services", "I05", false))
+	mux.Handle("GET /scenarios", u.placeholder(layout.Scenarios, "Scenarios", "I06", false))
+	mux.Handle("GET /accounts", u.placeholder(layout.Accounts, "Accounts", "I08", true))
+	mux.Handle("GET /my-account", u.placeholder(layout.MyAccount, "My Account", "I08", false))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticFiles()))
 	return mux
 }
@@ -74,16 +101,18 @@ func contentETags(fsys fs.FS) map[string]string {
 }
 
 // render writes a gomponents node as an HTML response. Rendering into a buffer first
-// means a rendering error becomes a clean 500 instead of a half-written page.
-func render(w http.ResponseWriter, r *http.Request, status int, n g.Node) {
+// means a rendering error becomes a clean 500 instead of a half-written page. Pages are
+// not cached, so the back button after logout does not show a logged-in page.
+func (u *ui) render(w http.ResponseWriter, r *http.Request, status int, n g.Node) {
 	var buf bytes.Buffer
 	if err := n.Render(&buf); err != nil {
-		slog.ErrorContext(r.Context(), "rendering page failed",
+		u.logger.ErrorContext(r.Context(), "rendering page failed",
 			slog.String(logx.AttrURLPath, r.URL.Path), slog.String(logx.AttrExceptionMessage, err.Error()))
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_, _ = buf.WriteTo(w)
 }

@@ -4,10 +4,10 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I03** (HTTP foundation). The binary connects to PostgreSQL,
-  creates its schema (`tmock migrate`) and its first admin (`tmock seed`), and serves the
-  health check and a "coming soon" page behind the shared HTTP plumbing: JSON errors,
-  security headers and cross-origin protection. Progress is tracked in spec §16.
+- **Status:** iteration **I04** (login, sessions and the UI shell). You can log in to the
+  dashboard and see its shell: the navigation, toasts and dialogs, with placeholder pages
+  for the sections later iterations build. The REST API has login, logout and `me` with
+  database-backed sessions. Progress is tracked in spec §16.
 
 ## Prerequisites
 
@@ -90,7 +90,36 @@ your `PATH`, so run it as `bin/tmock <command>` from `app-go/` (or without build
 | `bin/tmock migrate` | Applies pending migrations from `internal/db/migrations/` and exits. Safe to run concurrently |
 | `bin/tmock seed` | Creates the first admin from `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` if there are no users; otherwise does nothing |
 
-What to check after I03 (the earlier checks still apply; start the server with `make run`):
+What to check after I04 (the earlier checks still apply; start the server with `make run` and
+log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`):
+
+| Check | Expected |
+|---|---|
+| Open <http://localhost:3000/> | redirected to `/login`; the Login button is disabled until both fields are filled |
+| Log in with a wrong password | "Invalid email or password" above the fields; the email is kept |
+| Log in with the seeded admin | the Clients page with the menu Services, Clients, Scenarios, Accounts, My Account, Logout; each entry opens a placeholder naming its iteration |
+| Reload | still logged in |
+| Logout | back on `/login`; `/services` redirects to `/login` again |
+| A non-admin user (see below) | no Accounts entry; `/accounts` redirects to `/` |
+| Browser console | no errors and no CSP violations (a failed login shows as a `422` network line, which is expected) |
+| System dark mode | dark page as in the legacy dashboard |
+| `curl -c /tmp/cj -X POST localhost:3000/api/auth/login -d '{"email":"…","password":"…"}'` | `200` with the user, and a `tmock_session` cookie (`HttpOnly`, `SameSite=Lax`) |
+| `curl -b /tmp/cj localhost:3000/api/auth/me` | `200` with the user; without `-b`: `401 {"status":401,"message":"Not logged in"}` |
+| `curl -b /tmp/cj -X POST localhost:3000/api/auth/logout`, then `me` again | `204`, then `401` |
+| `make test-db` | login, expiry (`synctest`), logout, sweep, a deleted user's session, guards and the UI pages |
+
+A non-admin user for the check above (there is no Accounts page until I08):
+
+```bash
+make db-psql
+INSERT INTO users (name, email, password_hash)
+  SELECT 'Bob', 'bob@example.com', password_hash FROM users WHERE id = 1;  -- same password as the admin
+```
+
+Without `SESSION_SECRET`, sessions end when the server restarts (spec §9.2); set one in `.env` to
+keep them.
+
+What to check after I03:
 
 | Check | Expected |
 |---|---|
@@ -122,7 +151,7 @@ What to check after I01:
 |---|---|
 | `make check` | passes |
 | `curl localhost:3000/api/status` and `curl localhost:3000/status` | `{"status":"ok"}` |
-| Open <http://localhost:3000/> | the "Tmock — coming soon" page; the grey line reads "htmx 4.0.2 and Alpine 3.17.5 are running."; "Check API status" shows `{"status":"ok"}` |
+| Open <http://localhost:3000/> and log in (from I04) | a placeholder page; the grey line reads "htmx 4.0.2 and Alpine 3.17.5 are running."; "Check API status" shows `{"status":"ok"}` |
 | Browser console | `tmock: htmx 4.0.2, Alpine 3.17.5`, no errors and no CSP violations |
 | `TMOCK_ENV=production bin/tmock serve` | exits at once: `SESSION_SECRET: is required when TMOCK_ENV=production` |
 | `OTEL_EXPORTER_OTLP_PROTOCOL=grpc bin/tmock serve` | exits at once: `only http/json is supported` |
@@ -202,6 +231,34 @@ func (h *Handlers) patchService(w http.ResponseWriter, r *http.Request) {
 - Numeric ids in paths are parsed with `httpx.PathID` (`400` for anything else).
 - `internal/server` adds the security headers and cross-origin protection to everything except
   `/api/proxy/*`, and answers unknown API routes with JSON `404`/`405`.
+- Routes that need a login are wrapped in `sessions.RequireUser` or `sessions.RequireAdmin`
+  (`internal/auth`); the handler reads the user with `auth.UserFrom(r.Context())`.
+
+## Writing UI pages
+
+Every UI element is a component in `internal/views/components`, one file each, with its own
+section in `static/app.css` (spec §10.6, §10.7). Pages and layouts only compose components:
+
+```go
+components.Form(components.FormProps{
+	Action: "/services",
+	Attrs:  []g.Node{hx.Post("/services"), hx.Swap("outerHTML")}, // behaviour, never classes
+	Fields: []g.Node{components.TextField(components.TextFieldProps{Label: "Name", Name: "name", Error: errs["name"]})},
+	Actions: []g.Node{components.Button(components.ButtonProps{Label: "Save", Variant: components.ButtonPrimary, Submit: true})},
+})
+```
+
+- Only `internal/views/components` sets `class` attributes; a test fails otherwise. A new
+  element means a new component, its render test and its `app.css` section.
+- Components that hold others (`Form`, `AppHeader`, `PageHeader`, `ConfirmDialog`) decide the
+  order of their parts, so a layout change is one edit in one place.
+- `internal/views/hx` builds the `hx-*` attributes; nothing that needs eval (`hx-on`, `js:`,
+  trigger filters) is allowed.
+- Handlers in `internal/web` answer with `redirect` (303, or `HX-Redirect` for htmx), re-render
+  a form with `422` on validation errors, and use `fail` for other errors: the status, an error
+  toast and `HX-Reswap: none` (spec §10.2).
+- `static/app.js` holds the Alpine components (`toasts`, `modal`, `confirm`, `requiredFields`);
+  HTML refers to them by name only. A toast is raised from Go with `toast(w, type, title, msg)`.
 
 ## Logging
 
@@ -226,21 +283,28 @@ cmd/tmock/            the binary: config, logging set-up, lifecycle; the only pa
                       wires the UI into the server
 dev/vendorjs/         `make vendor-js`: re-downloads and verifies vendored JavaScript
 dev/otelcol.yaml      collector config for `make otel-up`
-internal/api/         REST handlers (health check)
+internal/api/         REST handlers (health check, login, logout, me)
 internal/app/         use cases shared by the REST API and the UI; app.Error (spec §2.1, §6.2)
+internal/auth/        sessions: cookie, lookup, logout, hourly sweep; the user and admin guards
+internal/auth/authtest/  in-memory session store for handler tests
 internal/clientip/    the client-IP rule (spec §7.3)
 internal/config/      configuration and .env loading (spec §4)
 internal/db/          connection pool, typed errors, migration runner and migrations (spec §3.3, §5)
 internal/db/dbtest/   per-test schemas for DB integration tests
 internal/password/    PBKDF2 password hashing (spec §9.1)
-internal/store/       repositories over database/sql (users so far)
+internal/store/       repositories over database/sql (users and sessions so far)
 internal/httpx/       HTTP plumbing: error format, JSON decode/encode, Optional[T], Validator,
                       panic recovery, security headers, cross-origin protection, proxy CORS
 internal/logx/        log handlers, event names, trace context, request log (spec §2.4)
+internal/logx/logxtest/  records log events in tests
 internal/logx/otlp/   OTLP/HTTP JSON log exporter
 internal/server/      assembles the http.Handler (backend; receives the UI from cmd/tmock)
-internal/web/         UI routes and the static file server
-internal/views/       gomponents views: layout shell and pages
+internal/web/         UI routes, page guards, login/logout, redirects, toasts, error mapping,
+                      and the static file server
+internal/views/components/  every UI element, one file each; the only package that sets classes
+internal/views/layout/      page shells: the logged-in page and the bare login page
+internal/views/pages/       pages composed from components
+internal/views/hx/          htmx attribute helpers
 internal/archtest/    import-boundary test (spec §1.3)
 static/               CSS, JS, images and vendored libraries, embedded with go:embed
 ```

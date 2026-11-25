@@ -2,14 +2,32 @@ package web
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/laposa/tmock/app-go/internal/app"
+	"github.com/laposa/tmock/app-go/internal/auth"
+	"github.com/laposa/tmock/app-go/internal/auth/authtest"
+	"github.com/laposa/tmock/app-go/internal/store"
 	"github.com/laposa/tmock/app-go/static"
 )
+
+// newHandler is the UI handler with an in-memory session store holding an admin (id 1)
+// and a user (id 2). Its use cases have no database: tests that log in through the form
+// are in login_test.go.
+func newHandler(t *testing.T) (http.Handler, *auth.Sessions, *authtest.Store) {
+	t.Helper()
+	st := authtest.New()
+	st.AddUser(store.User{ID: 1, Name: "Ann", Email: "ann@example.com", Admin: true})
+	st.AddUser(store.User{ID: 2, Name: "Bob", Email: "bob@example.com"})
+	logger := slog.New(slog.DiscardHandler)
+	sessions := auth.New(st, auth.Options{Secret: []byte("0123456789abcdef0123456789abcdef"), Logger: logger})
+	return Handler(Deps{App: app.New(nil, app.Options{Logger: logger}), Sessions: sessions, Logger: logger}), sessions, st
+}
 
 func get(t *testing.T, h http.Handler, path string) (*http.Response, string) {
 	t.Helper()
@@ -23,50 +41,8 @@ func get(t *testing.T, h http.Handler, path string) (*http.Response, string) {
 	return res, string(b)
 }
 
-func TestComingSoonPage(t *testing.T) {
-	res, body := get(t, Handler(), "/")
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status %d", res.StatusCode)
-	}
-	if ct := res.Header.Get("Content-Type"); ct != "text/html; charset=utf-8" {
-		t.Errorf("Content-Type %q", ct)
-	}
-	for _, want := range []string{
-		"<!doctype html>",
-		"<title>Coming soon · Tmock</title>",
-		"Tmock — coming soon",
-		`<meta name="htmx-config" content="{&#34;includeIndicatorCSS&#34;:false,&#34;history&#34;:false}">`,
-		`x-data="jsStatus"`,
-		`hx-get="/api/status"`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("page does not contain %q", want)
-		}
-	}
-	assertNoEval(t, body)
-}
-
-// Scripts load in the order spec §10.1 requires, all deferred.
-func TestScriptOrder(t *testing.T) {
-	_, body := get(t, Handler(), "/")
-	re := regexp.MustCompile(`<script src="([^"]+)" defer></script>`)
-	var got []string
-	for _, m := range re.FindAllStringSubmatch(body, -1) {
-		got = append(got, m[1])
-	}
-	want := []string{
-		"/static/" + static.HTMX,
-		"/static/" + static.HTMXAlpineCompat,
-		"/static/app.js",
-		"/static/" + static.Alpine,
-	}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Errorf("scripts\n got %v\nwant %v", got, want)
-	}
-}
-
 func TestStaticFiles(t *testing.T) {
-	h := Handler()
+	h, _, _ := newHandler(t)
 	cases := []struct {
 		path, wantType, wantCache string
 		wantStatus                int
@@ -101,7 +77,7 @@ func TestStaticFiles(t *testing.T) {
 }
 
 func TestStaticETag(t *testing.T) {
-	h := Handler()
+	h, _, _ := newHandler(t)
 	res, _ := get(t, h, "/static/app.css")
 	etag := res.Header.Get("ETag")
 	if len(etag) != 34 || etag[0] != '"' {
@@ -121,8 +97,9 @@ func TestStaticETag(t *testing.T) {
 }
 
 func TestPostNotAllowed(t *testing.T) {
+	h, _, _ := newHandler(t)
 	rec := httptest.NewRecorder()
-	Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST /: status %d", rec.Code)
 	}

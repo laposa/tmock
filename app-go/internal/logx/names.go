@@ -54,6 +54,8 @@ const (
 	AttrEnv            = "tmock.env"
 	AttrShutdownForced = "tmock.shutdown.forced"
 
+	AttrSessionsDeleted = "tmock.sessions.deleted"
+
 	AttrMigrationVersion = "tmock.migration.version"
 	AttrMigrationName    = "tmock.migration.name"
 
