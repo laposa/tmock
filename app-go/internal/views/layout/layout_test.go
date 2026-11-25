@@ -47,7 +47,7 @@ func TestNav(t *testing.T) {
 		t.Errorf("user nav\n got %s\nwant %s", got, want)
 	}
 	for name, html := range map[string]string{"admin": admin, "user": user} {
-		if !strings.HasSuffix(html, `<form class="nav__form" method="post" action="/logout"><button class="nav__link nav__link--button" type="submit">Logout</button></form></nav>`) {
+		if !strings.HasSuffix(html, `<form class="nav__form" method="post" action="/logout" hx-post="/logout" hx-confirm="Are you sure you want to log out?"><button class="nav__link nav__link--button" type="submit">Logout</button></form></nav>`) {
 			t.Errorf("%s nav does not end with the logout form: %s", name, html)
 		}
 	}

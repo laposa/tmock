@@ -103,6 +103,7 @@ log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`):
 | Click a service's name, change Name, URL and Path, Save | the modal closes; the table shows the new values; toast `Service "…" updated` |
 | Edit, Delete | the confirmation names the service and says its scenarios go too; Cancel keeps it, Confirm removes it from the table with a toast |
 | Close, or a click on the backdrop | the modal closes without saving |
+| Logout in the menu | the confirmation dialog asks "Are you sure you want to log out?"; Cancel (or Escape) stays logged in, Confirm goes to `/login` |
 | Browser console | no errors and no CSP violations (a failed save shows as a `422` network line, which is expected) |
 | curl CRUD (below) | `201`, `200`, `200`, `204`; a duplicate path `409`; `a/b` or a bad URL `400` with `details`; without the cookie `401` |
 | Console log | one `tmock.entity.changed` line per create, update and delete, with `tmock.entity.type=service`, `tmock.service=<path>` and `user.id` |

@@ -90,6 +90,9 @@ func TestNav(t *testing.T) {
 		`<nav class="nav" aria-label="Main"><a class="nav__link" href="/a">A</a>`+
 			`<a class="nav__link" href="/b" aria-current="page">B</a>`+
 			`<form class="nav__form" method="post" action="/logout"><button class="nav__link nav__link--button" type="submit">Logout</button></form></nav>`)
+	check(t, "form with attrs", Nav(NavProps{Label: "Main", Forms: []NavForm{{Label: "Logout", Action: "/logout", Attrs: []g.Node{click}}}}),
+		`<nav class="nav" aria-label="Main"><form class="nav__form" method="post" action="/logout" x-on:click="go">`+
+			`<button class="nav__link nav__link--button" type="submit">Logout</button></form></nav>`)
 }
 
 func TestShell(t *testing.T) {

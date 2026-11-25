@@ -1150,7 +1150,9 @@ implementation is new.
   `window.confirm`.
 - **Login:** a failed login re-renders the form with `422` and the message above the fields
   (empty fields: the messages next to them), like any form error. A logged-in user who opens
-  `/login` is redirected to `/`. Logout is a `POST /logout` form in the navigation, not a link.
+  `/login` is redirected to `/`. Logout is a `POST /logout` form in the navigation, not a link. It asks "Are you sure you want to
+  log out?" in the confirmation dialog first (`hx-post` with `hx-confirm`); without JavaScript the
+  form logs out at once.
 
 ### 10.3 Pages and workflows (acceptance checklist)
 
@@ -1158,7 +1160,7 @@ Every bullet is an acceptance item for its iteration.
 
 **Layout and navigation**
 - Logo plus "Tmock" links to `/`. Menu: Services, Clients, Scenarios, Accounts (admins only),
-  My Account, Logout. Toast region top-right.
+  My Account, Logout (asks for confirmation). Toast region top-right.
 - Route guard: anonymous users are redirected to `/login`; `/login` redirects to `/` when already
   logged in; `/accounts` redirects non-admins to `/`.
 
