@@ -68,7 +68,7 @@ func TestPanicIsRecoveredAndLogged(t *testing.T) {
 
 	var events []string
 	var request map[string]any
-	for _, line := range bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n")) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(logs.Bytes()), []byte("\n")) {
 		var m map[string]any
 		if err := json.Unmarshal(line, &m); err != nil {
 			t.Fatal(err)

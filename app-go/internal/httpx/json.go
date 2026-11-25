@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,29 +21,47 @@ const MaxBodyBytes = 10 << 20
 // to be written with WriteErr:
 //
 //   - 413 when the body is larger than MaxBodyBytes;
-//   - 400 for an empty body, malformed JSON, anything after the object, an unknown field
-//     (details: {"field": "unknown field"}), or a value of the wrong type (details keyed
-//     by the field path, for example "items[2].name").
+//   - 400 for an empty body, malformed JSON, anything but an object (null included),
+//     anything after the object, an unknown field (details: {"field": "unknown field"}),
+//     or a value of the wrong type (details keyed by the field path, for example
+//     "items[2].name").
+//
+// A dst that is not a pointer is a programming error; it is returned as it is, so that
+// WriteErr logs it and answers 500.
 func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
 	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
-		return decodeError(err, dst)
+	// First read one complete JSON value, so that syntax errors, size and trailing data
+	// are judged on the body as a whole, then decode that value into dst.
+	var raw json.RawMessage
+	if err := dec.Decode(&raw); err != nil {
+		return decodeError(err)
 	}
-	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+	if err := dec.Decode(&json.RawMessage{}); !errors.Is(err, io.EOF) {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			return decodeError(err, dst)
+			return decodeError(err)
 		}
 		return NewError(http.StatusBadRequest, "Request body must contain a single JSON object")
+	}
+	if raw[0] != '{' { // the decoder has skipped leading white space
+		return NewError(http.StatusBadRequest, "Request body must be a JSON object")
+	}
+	obj := json.NewDecoder(bytes.NewReader(raw))
+	obj.DisallowUnknownFields()
+	if err := obj.Decode(dst); err != nil {
+		var invalid *json.InvalidUnmarshalError
+		if errors.As(err, &invalid) {
+			return err
+		}
+		return decodeError(err)
 	}
 	return nil
 }
 
 var unknownField = regexp.MustCompile(`^json: unknown field "(.*)"$`)
 
-func decodeError(err error, dst any) error {
+func decodeError(err error) error {
 	var (
 		tooLarge *http.MaxBytesError
 		syntax   *json.SyntaxError
@@ -58,9 +77,6 @@ func decodeError(err error, dst any) error {
 	case errors.As(err, &syntax):
 		return NewError(http.StatusBadRequest, fmt.Sprintf("Malformed JSON at byte %d: %s", syntax.Offset, strings.TrimPrefix(syntax.Error(), "json: ")))
 	case errors.As(err, &typ):
-		if typ.Field == "" && dst != nil && typ.Type == reflect.TypeOf(dst).Elem() {
-			return NewError(http.StatusBadRequest, "Request body must be a JSON object")
-		}
 		msg := "must be " + typeName(typ.Type)
 		if typ.Field == "" {
 			// Go 1.27's encoding/json does not report the field for types with their own
@@ -138,7 +154,7 @@ func NoContent(w http.ResponseWriter) { w.WriteHeader(http.StatusNoContent) }
 func PathID(r *http.Request, name string) (int64, error) {
 	raw := r.PathValue(name)
 	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || id <= 0 {
+	if err != nil || id <= 0 || raw[0] < '1' || raw[0] > '9' { // also no "+5" or "007"
 		return 0, &Error{Status: http.StatusBadRequest, Message: fmt.Sprintf("%s must be a positive whole number, got %q", name, raw)}
 	}
 	return id, nil

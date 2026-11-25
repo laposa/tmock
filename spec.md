@@ -675,11 +675,14 @@ Every error response has one shape:
 `details` is present only for validation errors and maps the JSON field path (for example
 `condition.and[1].ip`) to a short message. The same messages are shown in the UI forms.
 
-Request bodies are decoded by `httpx.DecodeJSON`: an empty body, malformed JSON, anything after
-the object, and an unknown field (`details: {"nmae": "unknown field"}`) are `400`; a value of the
-wrong type is `400` with `details` keyed by its path (`items[1].label: "must be a string"`). With
+Request bodies are decoded by `httpx.DecodeJSON`: an empty body, malformed JSON, a body that is
+not an object (`null` included), anything after the object, and an unknown field
+(`details: {"nmae": "unknown field"}`) are `400`; a value of the wrong type is `400` with
+`details` keyed by its path (`items[1].label: "must be a string"`). `encoding/json` names an
+unknown field without its path, so one inside a nested object is reported by its bare name. With
 Go 1.27's `encoding/json`, a wrong type inside an `Optional[T]` field is reported without the
 field name (the message says which type was expected); Go 1.25 names the field (found in I03).
+A path id must be written canonically (`/api/service/7`); `0`, `+7` and `007` are `400`.
 
 Use cases in `internal/app` return `*app.Error` (kinds `Invalid`, `Unauthorized`, `Forbidden`,
 `NotFound`, `Conflict`) for expected failures; its message and details are safe to show. The REST

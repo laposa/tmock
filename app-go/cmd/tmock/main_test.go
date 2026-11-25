@@ -114,7 +114,7 @@ func (b *syncBuffer) events(t *testing.T) []map[string]any {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	var out []map[string]any
-	for _, line := range bytes.Split(bytes.TrimSpace(b.buf.Bytes()), []byte("\n")) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(b.buf.Bytes()), []byte("\n")) {
 		var m map[string]any
 		if err := json.Unmarshal(line, &m); err != nil {
 			t.Fatalf("log line %q: %v", line, err)

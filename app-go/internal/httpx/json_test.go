@@ -50,6 +50,8 @@ func TestDecodeJSONErrors(t *testing.T) {
 		{"truncated", `{"name":`, 400, "Malformed JSON: unexpected end of input", nil, false},
 		{"syntax", `{"name" "a"}`, 400, "Malformed JSON", nil, false},
 		{"not an object", `[1,2]`, 400, "Request body must be a JSON object", nil, false},
+		{"null", ` null`, 400, "Request body must be a JSON object", nil, false},
+		{"string", `"x"`, 400, "Request body must be a JSON object", nil, false},
 		{"two objects", `{} {}`, 400, "Request body must contain a single JSON object", nil, false},
 		{"trailing garbage", `{"name":"a"} x`, 400, "Request body must contain a single JSON object", nil, false},
 		{"unknown field", `{"name":"a","nmae":"b"}`, 400, `Unknown field "nmae"`, map[string]string{"nmae": "unknown field"}, false},
@@ -73,6 +75,17 @@ func TestDecodeJSONErrors(t *testing.T) {
 		if !maps.Equal(e.Details, tc.details) {
 			t.Errorf("%s: details %v, want %v", tc.name, e.Details, tc.details)
 		}
+	}
+}
+
+// A dst that is not a pointer is the caller's bug: a 500, not a 400.
+func TestDecodeJSONNonPointer(t *testing.T) {
+	t.Parallel()
+	var in input
+	err := DecodeJSON(httptest.NewRecorder(), httptest.NewRequest("POST", "/", strings.NewReader(`{}`)), in)
+	var pe PublicError
+	if err == nil || errors.As(err, &pe) {
+		t.Errorf("got %v", err)
 	}
 }
 
@@ -167,7 +180,7 @@ func TestPathID(t *testing.T) {
 			t.Errorf("%s: %d, %v", path, got, gotErr)
 		}
 	}
-	for _, path := range []string{"/x/0", "/x/-1", "/x/abc", "/x/1.5", "/x/99999999999999999999"} {
+	for _, path := range []string{"/x/0", "/x/-1", "/x/abc", "/x/1.5", "/x/99999999999999999999", "/x/+5", "/x/007", "/x/"} {
 		mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", path, nil))
 		var e *Error
 		if !errors.As(gotErr, &e) || e.Status != 400 || !strings.HasPrefix(e.Message, "id must be a positive whole number") {

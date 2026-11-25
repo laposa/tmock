@@ -99,6 +99,7 @@ func Conflict(format string, args ...any) *Error {
 // StoreError translates the store's errors (spec §5.3) for one use case: ErrNotFound and
 // ErrUnique become notFound and conflict (either may be nil when the case cannot happen),
 // ErrForeignKey a 400. Other errors are returned unchanged, so they end up as a 500.
+// notFound and conflict are copied, never changed, so they may be shared values.
 //
 //	err = app.StoreError(err, app.NotFound("Service %q not found", path),
 //		app.Conflict("A service with path %q already exists", in.Path))
@@ -107,15 +108,20 @@ func StoreError(err error, notFound, conflict *Error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, store.ErrNotFound) && notFound != nil:
-		notFound.Err = err
-		return notFound
+		return notFound.wrap(err)
 	case errors.Is(err, store.ErrUnique) && conflict != nil:
-		conflict.Err = err
-		return conflict
+		return conflict.wrap(err)
 	case errors.Is(err, store.ErrForeignKey):
 		return &Error{Kind: KindInvalid, Message: "A referenced item does not exist", Err: err}
 	}
 	return err
+}
+
+// wrap returns a copy of e with cause err.
+func (e *Error) wrap(err error) *Error {
+	c := *e
+	c.Err = err
+	return &c
 }
 
 // Kind of err, if it is (or wraps) an *Error; 0 otherwise.

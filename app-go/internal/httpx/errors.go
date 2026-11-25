@@ -106,10 +106,29 @@ func Recover(logger *slog.Logger, next http.Handler) http.Handler {
 			if tw.wrote {
 				panic(http.ErrAbortHandler)
 			}
+			// Drop what the handler had prepared for its own response (Content-Length,
+			// Content-Encoding, an upstream's Set-Cookie, …): it does not fit the 500.
+			h := w.Header()
+			for k := range h {
+				if !keepOnPanic[k] {
+					delete(h, k)
+				}
+			}
 			WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 		}()
 		next.ServeHTTP(tw, r)
 	})
+}
+
+// keepOnPanic are the headers set by tmock's own middleware (spec §9.4), which stay on
+// the 500 written after a panic.
+var keepOnPanic = map[string]bool{
+	"Content-Security-Policy":      true,
+	"Cross-Origin-Opener-Policy":   true,
+	"Cross-Origin-Resource-Policy": true,
+	"Referrer-Policy":              true,
+	"Strict-Transport-Security":    true,
+	"X-Frame-Options":              true,
 }
 
 // writeTracker remembers whether the response has been started.

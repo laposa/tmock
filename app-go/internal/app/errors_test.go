@@ -85,6 +85,10 @@ func TestStoreError(t *testing.T) {
 	if err := StoreError(store.ErrNotFound, nil, cf()); KindOf(err) != 0 {
 		t.Errorf("unmapped not found: %v", err)
 	}
+	shared := NotFound("Shared")
+	if StoreError(store.ErrNotFound, shared, nil) == error(shared) || shared.Err != nil {
+		t.Error("StoreError changed the error it was given")
+	}
 	other := errors.New("boom")
 	if StoreError(other, nf(), cf()) != other {
 		t.Error("other errors must pass through")
