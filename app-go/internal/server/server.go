@@ -18,6 +18,8 @@ import (
 type Options struct {
 	// UI serves every path outside /api/ and /status. If nil, those paths are 404.
 	UI http.Handler
+	// API adds the REST routes of spec §6.4. If nil, only the health checks are served.
+	API *api.API
 	// Proxy serves /api/proxy/ (from I09). It gets no security headers and no
 	// cross-origin protection (spec §9.3, §9.4); it applies its own CORS (httpx.ProxyCORS).
 	// If nil, /api/proxy/ paths are unknown API routes. It receives the path as sent, so it
@@ -46,6 +48,9 @@ func New(opts Options) http.Handler {
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("GET /api/status", api.Status)
 	apiMux.HandleFunc("GET /status", api.Status)
+	if opts.API != nil {
+		opts.API.Register(apiMux)
+	}
 	apiHandler := httpx.JSONFallback(apiMux)
 
 	mux := http.NewServeMux()

@@ -1,108 +1,467 @@
-/* tmock UI styles (spec §10.6). One file, no framework. */
+/* tmock UI styles (spec §10.6). One hand-written file, no framework.
+ *
+ * Values are copied from the legacy dashboard (app/src/assets/base.css and main.css)
+ * and from the Vuetify defaults it rendered with (indigo buttons, red for destructive
+ * actions, outlined fields, v-alert colours). Component rules use only the tokens below;
+ * a new look is a change to the token blocks, not to the rules.
+ *
+ * Order: tokens, base, then one section per component, named after its Go file in
+ * internal/views/components. A section styles only its own component's classes.
+ */
+
+/* ── Tokens ────────────────────────────────────────────────────────────────── */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
 
-  --color-bg: #121212;
-  --color-surface: #1e1e1e;
-  --color-surface-raised: #2a2a2a;
-  --color-border: #333;
-  --color-text: #e8e8e8;
-  --color-text-muted: #a0a0a0;
-  --color-primary: #3f51b5;        /* indigo, as in the legacy dashboard */
-  --color-primary-light: #7986cb;
-  --color-on-primary: #fff;
+  /* Legacy base.css: semantic colours */
+  --color-link: #596dde;               /* --primary */
+  --color-link-hover: #7c8dea;         /* --primary-light */
+  --color-text-error: #ff4d4f;         /* --error */
 
-  --radius: 6px;
+  /* Legacy base.css: light theme */
+  --color-bg: #ffffff;
+  --color-bg-soft: #f8f8f8;
+  --color-border: rgba(60, 60, 60, 0.12);
+  --color-border-hover: rgba(60, 60, 60, 0.29);
+  --color-heading: #2c3e50;
+  --color-text: #2c3e50;
+  --color-text-muted: rgba(60, 60, 60, 0.66);
+
+  /* Vuetify: surfaces (cards, dialogs) and fields, light theme */
+  --color-surface: #ffffff;
+  --color-on-surface: rgba(0, 0, 0, 0.87);
+  --color-field-border: rgba(0, 0, 0, 0.38);
+  --color-field-border-hover: rgba(0, 0, 0, 0.86);
+  --color-focus: #1867c0;              /* Vuetify light-theme primary */
+  --color-scrim: rgba(33, 33, 33, 0.46);
+
+  /* Vuetify colour palette, as the legacy templates named them */
+  --color-primary: #3f51b5;            /* color="indigo" */
+  --color-primary-hover: #5c6bc0;      /* indigo lighten-1 */
+  --color-on-primary: #ffffff;
+  --color-danger: #f44336;             /* color="red" */
+  --color-danger-hover: #ef5350;       /* red lighten-1 */
+  --color-on-danger: #ffffff;
+  --color-default-button: #f5f5f5;     /* v-btn on a light surface */
+  --color-disabled-bg: rgba(0, 0, 0, 0.12);
+  --color-disabled-text: rgba(0, 0, 0, 0.38);
+
+  /* v-alert types */
+  --color-error: #b00020;
+  --color-warning: #fb8c00;
+  --color-info: #2196f3;
+  --color-success: #4caf50;
+  --color-on-status: #ffffff;
+
+  /* Shape and depth (Vuetify) */
+  --radius: 4px;
+  --shadow-1: 0 3px 1px -2px rgba(0, 0, 0, 0.2), 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12);
+  --shadow-2: 0 3px 3px -2px rgba(0, 0, 0, 0.2), 0 3px 4px 0 rgba(0, 0, 0, 0.14), 0 1px 8px 0 rgba(0, 0, 0, 0.12);
+  --shadow-dialog: 0 11px 15px -7px rgba(0, 0, 0, 0.2), 0 24px 38px 3px rgba(0, 0, 0, 0.14), 0 9px 46px 8px rgba(0, 0, 0, 0.12);
+
+  /* Spacing */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 1rem;
   --space-4: 1.5rem;
-  --space-5: 2.5rem;
-  --content-width: 72rem;
+  --space-5: 2rem;
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Sizes: legacy main.css (#app) and Vuetify controls */
+  --content-width: 1280px;
+  --login-width: 400px;
+  --dialog-width: 800px;
+  --confirm-width: 600px;
+  --logo-size: 50px;
+  --control-height: 36px;              /* v-btn default */
+  --control-height-large: 44px;        /* v-btn size="large" */
+  --field-height: 48px;                /* v-text-field density="comfortable" */
+
+  /* Type: legacy base.css */
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+    Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-size: 15px;
+  --font-size-small: 0.75rem;
+  --font-size-button: 0.875rem;
+  --font-size-brand: 2rem;
+  --font-size-title: 1.5rem;
+  --font-size-card-title: 1.25rem;
+  --line-height: 1.6;
+  --button-letter-spacing: 0.0892857143em;
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+/* Legacy base.css: dark theme follows the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #181818;
+    --color-bg-soft: #222222;
+    --color-border: rgba(84, 84, 84, 0.48);
+    --color-border-hover: rgba(84, 84, 84, 0.65);
+    --color-heading: #ffffff;
+    --color-text: rgba(235, 235, 235, 0.64);
+    --color-text-muted: rgba(235, 235, 235, 0.45);
 
-html { font-family: var(--font-sans); line-height: 1.5; }
+    /* Vuetify dark theme */
+    --color-surface: #212121;
+    --color-on-surface: #ffffff;
+    --color-field-border: rgba(255, 255, 255, 0.38);
+    --color-field-border-hover: rgba(255, 255, 255, 0.86);
+    --color-focus: #2196f3;
+    --color-default-button: #424242;
+    --color-disabled-bg: rgba(255, 255, 255, 0.12);
+    --color-disabled-text: rgba(255, 255, 255, 0.38);
+    --color-error: #cf6679;
+  }
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+html {
+  font-family: var(--font-sans);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
 body {
-  margin: 0;
+  min-height: 100vh;
   background: var(--color-bg);
   color: var(--color-text);
 }
 
-a { color: var(--color-primary-light); }
+h1, h2, h3 { color: var(--color-heading); font-weight: 500; line-height: 1.2; }
+
+a {
+  color: var(--color-link);
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+a:hover { color: var(--color-link-hover); }
 
 code { font-family: var(--font-mono); font-size: 0.95em; }
 
-/* ── Layout shell ──────────────────────────────────────────────────────────── */
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
-.app-header {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-}
+/* htmx 4 request indicators (includeIndicatorCSS is off, spec §10.1). */
+.htmx-indicator { opacity: 0; visibility: hidden; }
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator { opacity: 1; visibility: visible; transition: opacity 200ms ease-in; }
 
-.app-header__inner,
-.app-main {
+/* ── frame.go ──────────────────────────────────────────────────────────────── */
+
+.frame {
+  width: 100%;
   max-width: var(--content-width);
   margin: 0 auto;
-  padding: 0 var(--space-3);
+  padding: var(--space-5);
 }
 
-.app-header__inner {
+.main { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.centered {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  min-height: 3.5rem;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100%;
 }
 
-.app-brand {
+.centered__panel {
+  width: 100%;
+  max-width: var(--login-width);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ── header.go ─────────────────────────────────────────────────────────────── */
+
+.app-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  font-size: 1rem;
+}
+
+/* ── brand.go ──────────────────────────────────────────────────────────────── */
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: var(--space-2);
+  color: var(--color-heading);
+}
+
+.brand--link { justify-content: flex-start; color: var(--color-link); }
+
+.brand__logo { width: var(--logo-size); height: var(--logo-size); }
+
+.brand__name {
+  font-size: var(--font-size-brand);
+  font-weight: 500;
+  letter-spacing: 1px;
+  line-height: 1.2;
   color: inherit;
-  font-size: 1.25rem;
-  font-weight: 600;
-  text-decoration: none;
 }
 
-.app-brand img { height: 2rem; width: auto; }
+/* ── nav.go ────────────────────────────────────────────────────────────────── */
 
-.app-nav { display: flex; gap: var(--space-3); margin-left: auto; }
+.nav { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; }
 
-.app-main { padding-top: var(--space-5); padding-bottom: var(--space-5); }
+.nav__form { display: contents; }
 
-/* ── Components ────────────────────────────────────────────────────────────── */
-
-.card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: var(--space-4);
+.nav__link {
+  padding: 3px;
+  color: var(--color-link);
+  transition: filter 0.3s;
 }
 
-.card h1 { margin-top: 0; font-size: 1.5rem; }
+.nav__link:hover { color: var(--color-link); filter: brightness(1.5); }
 
-.muted { color: var(--color-text-muted); }
+.nav__link[aria-current="page"] { text-decoration: underline; text-underline-offset: 4px; }
 
-.button {
+.nav__link--button {
   font: inherit;
-  color: var(--color-on-primary);
-  background: var(--color-primary);
+  background: none;
   border: 0;
-  border-radius: var(--radius);
-  padding: var(--space-2) var(--space-3);
   cursor: pointer;
 }
 
-.button:hover { background: var(--color-primary-light); }
+/* ── pageheader.go ─────────────────────────────────────────────────────────── */
 
-.output {
-  display: inline-block;
-  margin-left: var(--space-2);
-  font-family: var(--font-mono);
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.page-header__title { font-size: var(--font-size-title); }
+
+.page-header__actions { display: flex; gap: var(--space-2); }
+
+/* ── card.go ───────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+
+.card__title {
+  padding: var(--space-3) var(--space-3) 0;
+  font-size: var(--font-size-card-title);
+  color: inherit;
+}
+
+.card__body {
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── text.go ───────────────────────────────────────────────────────────────── */
+
+.text { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+
+.text--muted { color: var(--color-text-muted); }
+
+/* ── output.go ─────────────────────────────────────────────────────────────── */
+
+.output { font-family: var(--font-mono); }
+
+/* ── button.go ─────────────────────────────────────────────────────────────── */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: var(--font-size-button);
+  font-weight: 500;
+  letter-spacing: var(--button-letter-spacing);
+  text-transform: uppercase;
+  color: var(--color-on-surface);
+  background: var(--color-default-button);
+  border: 0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.button:hover { box-shadow: var(--shadow-2); }
+
+.button--primary { color: var(--color-on-primary); background: var(--color-primary); }
+.button--primary:hover { background: var(--color-primary-hover); }
+
+.button--danger { color: var(--color-on-danger); background: var(--color-danger); }
+.button--danger:hover { background: var(--color-danger-hover); }
+
+.button--text { color: var(--color-link); background: none; box-shadow: none; }
+.button--text:hover { background: var(--color-border); box-shadow: none; }
+
+.button--block { display: flex; width: 100%; }
+
+.button--large { height: var(--control-height-large); padding: 0 1.25rem; font-size: 1rem; }
+
+.button:disabled {
+  color: var(--color-disabled-text);
+  background: var(--color-disabled-bg);
+  box-shadow: none;
+  cursor: default;
+}
+
+/* ── field.go ──────────────────────────────────────────────────────────────── */
+
+.field { display: flex; flex-direction: column; gap: var(--space-1); }
+
+.field__label { font-size: var(--font-size-small); color: var(--color-text-muted); }
+
+.field__input {
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: 1rem;
+  color: var(--color-heading);
+  background: transparent;
+  border: 1px solid var(--color-field-border);
+  border-radius: var(--radius);
+}
+
+.field__input:hover { border-color: var(--color-field-border-hover); }
+
+.field__input:focus { outline: 0; border-color: var(--color-focus); box-shadow: inset 0 0 0 1px var(--color-focus); }
+
+.field__input[aria-invalid="true"] { border-color: var(--color-text-error); }
+
+.field__hint,
+.field__error { font-size: var(--font-size-small); padding: 0 var(--space-3); }
+
+.field__hint { color: var(--color-text-muted); }
+
+.field__error { color: var(--color-text-error); }
+
+/* ── form.go ───────────────────────────────────────────────────────────────── */
+
+.form { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.form__actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+
+/* ── alert.go ──────────────────────────────────────────────────────────────── */
+
+.alert {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  color: var(--color-on-status);
+  background: var(--color-error);
+}
+
+.alert--warning { background: var(--color-warning); }
+.alert--info { background: var(--color-info); }
+.alert--success { background: var(--color-success); }
+
+/* ── toast.go ──────────────────────────────────────────────────────────────── */
+
+.toasts {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  max-width: 40vw;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 16rem;
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  color: var(--color-on-status);
+  background: var(--color-info);
+}
+
+.toast[data-type="success"] { background: var(--color-success); }
+.toast[data-type="warning"] { background: var(--color-warning); }
+.toast[data-type="error"] { background: var(--color-error); }
+
+.toast__text { flex: 1; }
+
+.toast__title { display: block; font-weight: 500; }
+
+.toast__message { white-space: pre-wrap; }
+
+.toast__close {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.toast__close:hover { opacity: 1; }
+
+/* ── modal.go ──────────────────────────────────────────────────────────────── */
+
+.modal {
+  width: calc(100% - 2 * var(--space-4));
+  max-width: var(--dialog-width);
+  margin: auto;
+  padding: 0;
+  color: var(--color-on-surface);
+  background: var(--color-surface);
+  border: 0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-dialog);
+}
+
+.modal::backdrop { background: var(--color-scrim); }
+
+.modal__body { padding: var(--space-4); }
+
+/* ── confirm.go ────────────────────────────────────────────────────────────── */
+
+.confirm {
+  width: calc(100% - 2 * var(--space-4));
+  max-width: var(--confirm-width);
+  margin: auto;
+  padding: 0;
+  color: var(--color-on-surface);
+  background: var(--color-surface);
+  border: 0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-dialog);
+}
+
+.confirm::backdrop { background: var(--color-scrim); }
+
+.confirm__message { padding: var(--space-4) var(--space-4) var(--space-3); }
+
+.confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-3);
 }

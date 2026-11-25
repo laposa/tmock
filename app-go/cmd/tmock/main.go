@@ -20,10 +20,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/laposa/tmock/app-go/internal/api"
+	"github.com/laposa/tmock/app-go/internal/app"
+	"github.com/laposa/tmock/app-go/internal/auth"
 	"github.com/laposa/tmock/app-go/internal/config"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/password"
 	"github.com/laposa/tmock/app-go/internal/server"
+	"github.com/laposa/tmock/app-go/internal/store"
 	"github.com/laposa/tmock/app-go/internal/web"
 )
 
@@ -129,7 +133,20 @@ func runServer(ctx context.Context, logger *slog.Logger, cfg config.Config, pool
 	if err != nil {
 		return fmt.Errorf("cannot listen: %w", err)
 	}
-	handler := server.New(server.Options{UI: web.Handler(), Logger: logger, Production: cfg.Production()})
+	uc := app.New(pool, app.Options{Logger: logger, Hasher: password.Default})
+	sessions := auth.New(store.NewSessions(pool), auth.Options{Secret: cfg.SessionSecret, Secure: cfg.Production(), Logger: logger})
+	handler := server.New(server.Options{
+		UI:         web.Handler(web.Deps{App: uc, Sessions: sessions, Logger: logger}),
+		API:        api.New(uc, sessions, logger),
+		Logger:     logger,
+		Production: cfg.Production(),
+	})
+
+	sweepCtx, stopSweep := context.WithCancel(context.Background())
+	swept := make(chan struct{})
+	go func() { defer close(swept); sessions.RunSweeper(sweepCtx) }()
+	defer func() { stopSweep(); <-swept }()
+
 	if err := serve(ctx, logger, ln, handler, cfg.Env, drainTimeout); err != nil {
 		return fmt.Errorf("server failed: %w", err)
 	}

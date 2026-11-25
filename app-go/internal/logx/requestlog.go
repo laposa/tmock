@@ -1,6 +1,7 @@
 package logx
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -16,23 +17,41 @@ import (
 // checks are logged at debug level. Header values and bodies are never logged.
 //
 // It records the response even if the handler panics, so wrap it around the panic
-// recovery middleware, not inside it.
+// recovery middleware, not inside it. A handler that identifies the user calls SetUserID,
+// and the event then carries user.id.
 func RequestLog(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		info := &requestInfo{}
+		ctx := context.WithValue(r.Context(), requestInfoKey{}, info)
 		if tc, ok := ParseTraceparent(r.Header.Get("Traceparent")); ok {
-			r = r.WithContext(ContextWithTrace(r.Context(), tc))
+			ctx = ContextWithTrace(ctx, tc)
 		}
+		r = r.WithContext(ctx)
 		rec := &statusRecorder{ResponseWriter: w}
 		defer func() {
 			// r.Pattern is filled in by the ServeMux that routed the request.
-			logRequest(logger, r, rec.status(), time.Since(start))
+			logRequest(logger, r, rec.status(), time.Since(start), info.userID)
 		}()
 		next.ServeHTTP(rec, r)
 	})
 }
 
-func logRequest(logger *slog.Logger, r *http.Request, status int, d time.Duration) {
+// requestInfo collects what handlers learn about a request for its log event.
+type requestInfo struct{ userID int64 }
+
+type requestInfoKey struct{}
+
+// SetUserID records the logged-in user of the request that ctx belongs to, so the
+// tmock.http.request event carries user.id (spec §2.4.2). Outside RequestLog it does
+// nothing.
+func SetUserID(ctx context.Context, id int64) {
+	if info, ok := ctx.Value(requestInfoKey{}).(*requestInfo); ok {
+		info.userID = id
+	}
+}
+
+func logRequest(logger *slog.Logger, r *http.Request, status int, d time.Duration, userID int64) {
 	level := slog.LevelInfo
 	if r.URL.Path == "/status" || r.URL.Path == "/api/status" {
 		level = slog.LevelDebug
@@ -56,6 +75,9 @@ func logRequest(logger *slog.Logger, r *http.Request, status int, d time.Duratio
 	}
 	if r.URL.RawQuery != "" {
 		attrs = append(attrs, slog.String(AttrURLQuery, r.URL.RawQuery))
+	}
+	if userID != 0 {
+		attrs = append(attrs, slog.Int64(AttrUserID, userID))
 	}
 	msg := fmt.Sprintf("%s %s %s %d %dms", ip, r.Method, r.URL.RequestURI(), status, ms)
 	logger.LogAttrs(ctx, level, msg, attrs...)

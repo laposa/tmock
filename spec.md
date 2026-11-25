@@ -210,15 +210,16 @@ app-go/
     ├── server/               # wires everything into one http.Handler; lifecycle
     ├── archtest/             # import-boundary test (§1.3)
     │   # ── UI (may import gomponents) ──
-    ├── web/                  # UI routes, handlers, middleware (auth gate, errors → toasts),
-    │                         # hx-* attribute helpers
+    ├── web/                  # UI routes, handlers, page guards, redirects, errors → toasts
     └── views/
         ├── components/       # every UI element, one file each: button, field, switch, table,
         │                     # chip, modal, confirm, toast region, nav, … (§10.7); the only
         │                     # package that sets `class` attributes
         ├── layout/           # page shell: places the shell components and page regions (§10.7)
-        └── pages/            # login, clients, services, scenarios, accounts, myaccount;
-                              # composed from components only
+        ├── pages/            # login, clients, services, scenarios, accounts, myaccount;
+        │                     # composed from components only
+        └── hx/               # hx-* attribute helpers (here, not in web/, so that pages and
+                              # components can use them: web imports the views)
 ```
 
 ### 2.4 Logging, log events and OpenTelemetry
@@ -393,8 +394,8 @@ endpoint is set; with export off, the app behaves exactly as with console loggin
 | API docs | hand-written `openapi.json` (embedded); `/swagger` page loads Swagger UI from a CDN | — |
 | Tests | `testing`, `net/http/httptest`, `testing/synctest` where timing matters | same |
 
-The **gomponents-htmx** helper module is NOT used. `internal/web` provides the handful of `hx-*`
-attribute helpers needed, so the UI has a single third-party dependency.
+The **gomponents-htmx** helper module is NOT used. `internal/views/hx` provides the handful of
+`hx-*` attribute helpers needed, so the UI has a single third-party dependency.
 
 ### 3.2 Exception register
 
@@ -1093,7 +1094,7 @@ implementation is new.
   - `implicitInheritance` stays at its default `false`.
 - **Explicit inheritance.** htmx 4 attributes don't flow to children unless the parent uses the
   `:inherited` modifier, for example `hx-target:inherited="#modal-body"` on a table whose rows open
-  the modal. The `internal/web` helpers emit the modifier explicitly. Request verbs and
+  the modal. The `internal/views/hx` helpers emit the modifier explicitly. Request verbs and
   `hx-trigger` are never inherited.
 - **Error responses are swapped.** htmx 4 swaps `4xx` and `5xx` responses by default (2.x didn't).
   The UI relies on that:
@@ -1124,13 +1125,24 @@ implementation is new.
     logged.
   - Redirects use `HX-Redirect` on a `200` response, because htmx 4 ignores response headers on
     `3xx` responses. Plain (non-HTMX) requests get an ordinary `303`.
-- **Toasts:** handlers set `HX-Trigger: {"toast":{"type":"success|error|info|warning","title":"…","message":"…"}}`.
+- **Toasts:** handlers set `HX-Trigger: {"toast":{"target":"body","type":"success|error|info|warning","title":"…","message":"…"}}`.
   htmx 4 fires the event after the swap completes, with the object's fields on `event.detail`.
-  An Alpine store displays toasts top-right and auto-dismisses them after 5 seconds. Messages are
-  always escaped.
+  It fires on the element that sent the request unless `target` names another, and once a swap
+  has removed that element the event never reaches `document`; hence `"target":"body"` (found in
+  I04). An Alpine store displays toasts top-right and auto-dismisses them after 5 seconds.
+  Messages are always escaped.
 - **Modals:** a single `<dialog id="modal">` host in the layout. HTMX loads the modal content into
-  it, and an Alpine component calls `showModal()` and `close()`. Confirmations use a second,
-  smaller `<dialog>`.
+  `#modal-body`, and an Alpine component calls `showModal()` when content arrives
+  (`htmx:after:settle`) and empties it on `close`. A click on the backdrop closes it unless the
+  content carries `data-persistent`; a response closes it with
+  `HX-Trigger: {"modal:close":{"target":"body"}}`.
+- **Confirmations** use a second, smaller `<dialog id="confirm">`. Buttons carry `hx-confirm`;
+  `app.js` cancels htmx 4's `htmx:confirm` event, shows the question, and calls
+  `issueRequest()` on Confirm or `dropRequest()` on Cancel or Escape, instead of
+  `window.confirm`.
+- **Login:** a failed login re-renders the form with `422` and the message above the fields
+  (empty fields: the messages next to them), like any form error. A logged-in user who opens
+  `/login` is redirected to `/`. Logout is a `POST /logout` form in the navigation, not a link.
 
 ### 10.3 Pages and workflows (acceptance checklist)
 
@@ -1228,11 +1240,14 @@ A single hand-written `static/app.css`. No CSS framework, no preprocessor, no bu
 native `<dialog>`, `<details>`, `popover` and `:has()`.
 
 - **Copied from the legacy app.** The look follows the legacy dashboard, and the values come
-  from it rather than being invented: the indigo primary (Vuetify's `indigo`, `#3f51b5`, used for
-  the app bar, buttons and switches), red for destructive actions and errors, the dark tables
-  (`v-table theme="dark"`), and the page width and spacing in `app/src/assets/main.css`. Where
-  Vuetify sets a value (field height, radius, elevation), we copy the value that the legacy page
-  renders. The result should look similar, not identical (intent.md §4).
+  from it rather than being invented: the page colours, link colour (`#596dde`), font and the
+  light/dark switch on `prefers-color-scheme` from `app/src/assets/base.css`; the page width and
+  spacing from `main.css`; the plain header with a 50 px logo and the menu links from
+  `MainNavigation.vue`; the indigo of buttons and switches (Vuetify's `indigo`, `#3f51b5`), red
+  for destructive actions (`#f44336`), the `v-alert` colours, and the dark tables
+  (`v-table theme="dark"`). Where Vuetify sets a value (field height, radius, elevation), we copy
+  the value that the legacy page renders. The result should look similar, not identical
+  (intent.md §4).
 - **Tokens first.** `app.css` starts with CSS custom properties in `:root`: colours, spacing,
   radius, fonts, widths. Component rules use only these tokens, never literal colours or sizes,
   so another style is a change to the token block (or a second block, for example
@@ -1265,8 +1280,11 @@ change later in one place without editing the pages.
   `Attrs []g.Node` field, which the component puts on its main element.
 - **Components own their markup and classes.** Class names are BEM-style and named after the
   component (`button`, `button--danger`, `field__error`). Only `internal/views/components` sets
-  `class` attributes. A test scans the other UI packages (`internal/views/layout`,
-  `internal/views/pages`, `internal/web`) and fails if any of them sets a `class` attribute.
+  `class` attributes. A test parses the other UI packages (`internal/views/layout`,
+  `internal/views/pages`, `internal/views/hx`, `internal/web`) and fails if any of them sets a
+  `class` attribute (`html.Class`, or `class`, `:class` or `x-bind:class` through `Attr`).
+  `static/app.js` sets no classes either: state that CSS needs is a data attribute that the
+  component's template binds (a toast's `data-type`).
 - **Order is decided by layout components, not by pages.** A page passes its parts as separate
   props (title, actions, toolbar, content), and a layout component places them: `layout.Page`
   for the shell (header, nav, main, toast region, modal host), `components.PageHeader` for title
@@ -1847,7 +1865,7 @@ Update this table as issues are created and closed.
 | I01 | Configuration, logging, lifecycle | #34 | Done | own OTLP exporter; `internal/clientip` added |
 | I02 | Database, migrations, passwords, seed | #36 | Done | pgx v5.11.0; `internal/db/dbtest` helper; PostgreSQL 17 only |
 | I03 | HTTP foundation | #40 | In review | JSON 405 with `Allow`; `app.Error` kinds; Optional field name caveat on Go 1.27 |
-| I04 | Login, sessions, UI shell | | Planned | |
+| I04 | Login, sessions, UI shell | #43 | In review | `internal/views/hx` instead of helpers in `web`; toasts need `"target":"body"`; placeholder pages until I05–I08 |
 | I05 | Services | | Planned | |
 | I06 | Scenarios | | Planned | |
 | I07 | Clients, assignments, tokens | | Planned | |

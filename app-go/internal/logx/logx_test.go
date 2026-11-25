@@ -222,6 +222,19 @@ func TestRequestLogDefaults(t *testing.T) {
 	}
 }
 
+func TestRequestLogUserID(t *testing.T) {
+	identified := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { SetUserID(r.Context(), 42) })
+	recs := serveLogged(t, identified, httptest.NewRequest("GET", "/x", nil))
+	if len(recs) != 1 || recs[0].attrs[AttrUserID] != "42" {
+		t.Errorf("records %+v", recs)
+	}
+	recs = serveLogged(t, http.NotFoundHandler(), httptest.NewRequest("GET", "/x", nil))
+	if _, ok := recs[0].attrs[AttrUserID]; ok {
+		t.Error("user.id without a user")
+	}
+	SetUserID(context.Background(), 1) // outside RequestLog: no effect, no panic
+}
+
 func TestRequestLogSkippedBelowLevel(t *testing.T) {
 	logs := newCapture()
 	logger := slog.New(NewHandler(slog.LevelInfo, logs, nil))
@@ -247,8 +260,9 @@ func TestRequestLogOnPanic(t *testing.T) {
 	}
 }
 
-// Spec §2.4.3: credentials, header values and bodies never reach the log. Later
-// iterations extend this with a login, a token PATCH and a proxied request.
+// Spec §2.4.3: credentials, header values and bodies never reach the log. A real login
+// runs in TestLoginNeverLogsSecrets (secrets_test.go); later iterations add a token PATCH
+// and a proxied request.
 func TestRequestLogNeverLogsSecrets(t *testing.T) {
 	secrets := []string{"sess-cookie-value", "bearer-token-value", "client-token-value", "api-key-value", "body-password-value", "user-agent-value"}
 	r := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(`{"password":"body-password-value"}`))
