@@ -129,7 +129,7 @@ func runServer(ctx context.Context, logger *slog.Logger, cfg config.Config, pool
 	if err != nil {
 		return fmt.Errorf("cannot listen: %w", err)
 	}
-	handler := server.New(server.Options{UI: web.Handler(), Logger: logger})
+	handler := server.New(server.Options{UI: web.Handler(), Logger: logger, Production: cfg.Production()})
 	if err := serve(ctx, logger, ln, handler, cfg.Env, drainTimeout); err != nil {
 		return fmt.Errorf("server failed: %w", err)
 	}

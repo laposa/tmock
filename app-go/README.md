@@ -4,10 +4,10 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I02** (database, migrations, password hashing, seed). The binary
-  connects to PostgreSQL, creates its schema (`tmock migrate`) and its first admin
-  (`tmock seed`), serves the health check and a "coming soon" page, logs every request, can
-  export its logs over OTLP, and shuts down gracefully. Progress is tracked in spec §16.
+- **Status:** iteration **I03** (HTTP foundation). The binary connects to PostgreSQL,
+  creates its schema (`tmock migrate`) and its first admin (`tmock seed`), and serves the
+  health check and a "coming soon" page behind the shared HTTP plumbing: JSON errors,
+  security headers and cross-origin protection. Progress is tracked in spec §16.
 
 ## Prerequisites
 
@@ -90,7 +90,18 @@ your `PATH`, so run it as `bin/tmock <command>` from `app-go/` (or without build
 | `bin/tmock migrate` | Applies pending migrations from `internal/db/migrations/` and exits. Safe to run concurrently |
 | `bin/tmock seed` | Creates the first admin from `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` if there are no users; otherwise does nothing |
 
-What to check after I02 (the I00 and I01 checks still apply):
+What to check after I03 (the earlier checks still apply; start the server with `make run`):
+
+| Check | Expected |
+|---|---|
+| `curl -i localhost:3000/api/status` | `200`, with `Content-Security-Policy`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer` and the other headers of spec §9.4 |
+| `TMOCK_ENV=production` (with a `SESSION_SECRET`), same request | also `Strict-Transport-Security` and `upgrade-insecure-requests` in the CSP |
+| `curl localhost:3000/api/nope` | `404 {"status":404,"message":"Not found"}` |
+| `curl -i -X DELETE localhost:3000/api/status` | `405 {"status":405,"message":"Method not allowed"}`, `Allow: GET, HEAD` |
+| `curl -X POST -H 'Sec-Fetch-Site: cross-site' -H 'Origin: https://evil.example' localhost:3000/api/status` | `403 {"status":403,"message":"Cross-origin request rejected"}` |
+| `go test ./internal/httpx ./internal/app ./internal/server` | error shapes, validation details, `Optional[T]` (absent / null / value), headers, cross-origin and proxy CORS |
+
+What to check after I02:
 
 | Check | Expected |
 |---|---|
@@ -165,6 +176,33 @@ The full list with defaults is in spec §4.2. Invalid values stop start-up with 
 every problem found. Booleans accept only `true`, `false`, `1` and `0`; empty values count
 as unset.
 
+## Writing handlers
+
+REST handlers are thin: decode, call a use case in `internal/app`, write the result (spec §2.1).
+
+```go
+func (h *Handlers) patchService(w http.ResponseWriter, r *http.Request) {
+	var in app.ServicePatch // PATCH fields are httpx.Optional[T]: absent, null or a value
+	if err := httpx.DecodeJSON(w, r, &in); err != nil { // 400 / 413, §6.2 shape
+		httpx.WriteErr(w, r, h.logger, err)
+		return
+	}
+	svc, err := h.app.PatchService(r.Context(), r.PathValue("path"), in)
+	if err != nil {
+		httpx.WriteErr(w, r, h.logger, err) // *app.Error → its status; anything else → logged 500
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, svc)
+}
+```
+
+- Use cases return `*app.Error` for expected failures (`app.Invalid`, `NotFound`, `Conflict`, …)
+  and translate store errors with `app.StoreError`. Validation collects every problem with
+  `httpx.Validator` and field paths built by `httpx.Field("condition", "or", 0, "cidr")`.
+- Numeric ids in paths are parsed with `httpx.PathID` (`400` for anything else).
+- `internal/server` adds the security headers and cross-origin protection to everything except
+  `/api/proxy/*`, and answers unknown API routes with JSON `404`/`405`.
+
 ## Logging
 
 Logs go to stdout as text (`LOG_FORMAT=json` for JSON) at `LOG_LEVEL` (default `info`).
@@ -189,13 +227,15 @@ cmd/tmock/            the binary: config, logging set-up, lifecycle; the only pa
 dev/vendorjs/         `make vendor-js`: re-downloads and verifies vendored JavaScript
 dev/otelcol.yaml      collector config for `make otel-up`
 internal/api/         REST handlers (health check)
+internal/app/         use cases shared by the REST API and the UI; app.Error (spec §2.1, §6.2)
 internal/clientip/    the client-IP rule (spec §7.3)
 internal/config/      configuration and .env loading (spec §4)
 internal/db/          connection pool, typed errors, migration runner and migrations (spec §3.3, §5)
 internal/db/dbtest/   per-test schemas for DB integration tests
 internal/password/    PBKDF2 password hashing (spec §9.1)
 internal/store/       repositories over database/sql (users so far)
-internal/httpx/       error responses and panic recovery
+internal/httpx/       HTTP plumbing: error format, JSON decode/encode, Optional[T], Validator,
+                      panic recovery, security headers, cross-origin protection, proxy CORS
 internal/logx/        log handlers, event names, trace context, request log (spec §2.4)
 internal/logx/otlp/   OTLP/HTTP JSON log exporter
 internal/server/      assembles the http.Handler (backend; receives the UI from cmd/tmock)

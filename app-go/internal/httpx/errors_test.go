@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -87,4 +88,31 @@ func TestRecoverPassesAbortThrough(t *testing.T) {
 		}
 	}()
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/", nil))
+}
+
+// A panic must not leave the handler's own headers on the 500: a stale Content-Length
+// would truncate it, and an upstream's Set-Cookie must not leak onto it.
+func TestRecoverDropsHandlerHeaders(t *testing.T) {
+	srv := httptest.NewServer(Recover(slog.New(slog.DiscardHandler), SecurityHeaders(false, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "5000")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Set-Cookie", "upstream=1")
+		panic("boom")
+	}))))
+	defer srv.Close()
+	res, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil || res.StatusCode != 500 || string(body) != `{"status":500,"message":"Internal server error"}`+"\n" {
+		t.Fatalf("%d %q %v", res.StatusCode, body, err)
+	}
+	if res.Header.Get("Set-Cookie") != "" || res.Header.Get("Content-Encoding") != "" {
+		t.Errorf("handler headers kept: %v", res.Header)
+	}
+	if res.Header.Get("Content-Security-Policy") != CSP {
+		t.Errorf("security headers dropped: %v", res.Header)
+	}
 }
