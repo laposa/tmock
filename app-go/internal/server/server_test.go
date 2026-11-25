@@ -101,3 +101,94 @@ func TestHealthCheckLoggedAtDebug(t *testing.T) {
 		t.Errorf("other request not logged: %q", logs.String())
 	}
 }
+
+// Verify item: the headers of spec §9.4 on API and UI responses, but not on the proxy.
+func TestSecurityHeadersAndProxyExemption(t *testing.T) {
+	ui := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	proxy := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Header().Set("X-From", "proxy") })
+	h := New(Options{UI: ui, Proxy: proxy, Logger: slog.New(slog.DiscardHandler), Production: true})
+
+	for _, path := range []string{"/api/status", "/status", "/", "/api/unknown"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if !strings.HasPrefix(rec.Header().Get("Content-Security-Policy"), "default-src 'self'") ||
+			rec.Header().Get("Strict-Transport-Security") == "" || rec.Header().Get("X-Frame-Options") != "SAMEORIGIN" {
+			t.Errorf("%s: headers %v", path, rec.Header())
+		}
+	}
+
+	// The proxy is transparent: no security headers, and no cross-origin protection.
+	r := httptest.NewRequest("POST", "/api/proxy/svc/x", nil)
+	r.Header.Set("Sec-Fetch-Site", "cross-site")
+	r.Header.Set("Origin", "https://app.example")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+	if rec.Code != 200 || rec.Header().Get("X-From") != "proxy" || rec.Header().Get("Content-Security-Policy") != "" {
+		t.Errorf("proxy: %d %v", rec.Code, rec.Header())
+	}
+}
+
+// Verify item: a cross-origin browser POST is rejected, while curl passes.
+func TestCrossOriginProtection(t *testing.T) {
+	ui := http.NewServeMux()
+	ui.HandleFunc("POST /ui/things", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusCreated) })
+	h := New(Options{UI: ui, Logger: slog.New(slog.DiscardHandler)})
+
+	r := httptest.NewRequest("POST", "http://tmock.test/ui/things", nil)
+	r.Header.Set("Sec-Fetch-Site", "cross-site")
+	r.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+	if rec.Code != 403 || !strings.Contains(rec.Body.String(), "Cross-origin request rejected") {
+		t.Errorf("cross-site: %d %q", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "http://tmock.test/ui/things", nil)) // like curl
+	if rec.Code != 201 {
+		t.Errorf("curl: %d %q", rec.Code, rec.Body.String())
+	}
+
+	// Without a proxy handler, /api/proxy/ is an unknown API route.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/proxy/svc", nil))
+	if rec.Code != 404 || !strings.Contains(rec.Body.String(), `"status":404`) {
+		t.Errorf("proxy without handler: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+// Unknown API routes and wrong methods are answered in the §6.2 format.
+func TestAPIErrorsAreJSON(t *testing.T) {
+	h := New(Options{UI: http.NotFoundHandler(), Logger: slog.New(slog.DiscardHandler)})
+	for _, tc := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"GET", "/api/unknown", `{"status":404,"message":"Not found"}`, 404},
+		{"DELETE", "/api/status", `{"status":405,"message":"Method not allowed"}`, 405},
+		{"POST", "/status", `{"status":405,"message":"Method not allowed"}`, 405},
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+		if rec.Code != tc.status || strings.TrimSpace(rec.Body.String()) != tc.body {
+			t.Errorf("%s %s: %d %q", tc.method, tc.path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// A request rejected before routing has no http.route in the request log.
+func TestRejectedRequestHasNoRoute(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(logx.NewHandler(slog.LevelDebug, slog.NewJSONHandler(&logs, nil), nil))
+	h := New(Options{UI: http.NotFoundHandler(), Logger: logger})
+	r := httptest.NewRequest("POST", "/ui/x", nil)
+	r.Header.Set("Sec-Fetch-Site", "cross-site")
+	h.ServeHTTP(httptest.NewRecorder(), r)
+	var rec map[string]any
+	if err := json.Unmarshal(logs.Bytes(), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec[logx.AttrHTTPStatusCode] != float64(403) || rec[logx.AttrHTTPRoute] != nil {
+		t.Errorf("log record %v", rec)
+	}
+}
