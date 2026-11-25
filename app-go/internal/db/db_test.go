@@ -21,8 +21,9 @@ func TestRedact(t *testing.T) {
 	t.Parallel()
 	for in, want := range map[string]string{
 		"postgres://u:hunter2@h:5432/d?sslmode=disable": "postgres://u:xxxxx@h:5432/d?sslmode=disable",
-		"postgres://u@h/d":               "postgres://u@h/d",
-		"host=h user=u password=hunter2": "(DSN in key=value form)",
+		"postgres://u@h/d": "postgres://u@h/d",
+		"postgres://u@h/d?password=hunter2&sslmode=disable": "postgres://u@h/d?password=xxxxx&sslmode=disable",
+		"host=h user=u password=hunter2":                    "(DSN in key=value form)",
 	} {
 		if got := db.Redact(in); got != want {
 			t.Errorf("Redact(%q) = %q, want %q", in, got, want)

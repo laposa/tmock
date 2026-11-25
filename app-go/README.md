@@ -80,13 +80,15 @@ make otel-up   # optional: OpenTelemetry Collector on localhost:4318 (make otel-
 make db-down   # stop the containers; make db-reset also deletes the database volume
 ```
 
-The commands of the binary (`bin/tmock help`):
+The commands of the binary. `make build` writes it to `bin/tmock`; it is not installed on
+your `PATH`, so run it as `bin/tmock <command>` from `app-go/` (or without building:
+`go run ./cmd/tmock <command>`). `make migrate`, `make seed` and `make run` build it first.
 
 | Command | What it does |
 |---|---|
-| `tmock serve` (default) | Runs the server. Refuses to start while migrations are pending, unless `MIGRATE_ON_START=true`, which applies them first |
-| `tmock migrate` | Applies pending migrations from `internal/db/migrations/` and exits. Safe to run concurrently |
-| `tmock seed` | Creates the first admin from `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` if there are no users; otherwise does nothing |
+| `bin/tmock serve` (default) | Runs the server. Refuses to start while migrations are pending, unless `MIGRATE_ON_START=true`, which applies them first |
+| `bin/tmock migrate` | Applies pending migrations from `internal/db/migrations/` and exits. Safe to run concurrently |
+| `bin/tmock seed` | Creates the first admin from `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` if there are no users; otherwise does nothing |
 
 What to check after I02 (the I00 and I01 checks still apply):
 

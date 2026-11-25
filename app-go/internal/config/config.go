@@ -65,15 +65,6 @@ type Admin struct {
 // Production reports whether TMOCK_ENV is "production".
 func (c Config) Production() bool { return c.Env == "production" }
 
-// DatabaseURLRedacted is the DSN with its password masked, safe to log (spec §2.4.3).
-func (c Config) DatabaseURLRedacted() string {
-	u, err := url.Parse(c.DatabaseURL)
-	if err != nil {
-		return ""
-	}
-	return u.Redacted()
-}
-
 // Error lists every configuration problem found, one per line.
 type Error struct{ Problems []string }
 

@@ -223,11 +223,6 @@ func TestDatabaseURL(t *testing.T) {
 	}; !slices.Equal(got, want) {
 		t.Errorf("partial set: %q", got)
 	}
-
-	c := mustLoad(t, map[string]string{"DATABASE_URL": "postgres://u:hunter2@h/d"})
-	if r := c.DatabaseURLRedacted(); strings.Contains(r, "hunter2") || !strings.Contains(r, "u:xxxxx@h") {
-		t.Errorf("redacted %q", r)
-	}
 }
 
 func TestOTLP(t *testing.T) {

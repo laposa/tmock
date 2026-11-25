@@ -95,9 +95,6 @@ func TestMigrateFreshAndAgain(t *testing.T) {
 	ctx := context.Background()
 	logs := &capture{}
 
-	if v, err := db.SchemaVersion(ctx, pool); err != nil || v != "" {
-		t.Fatalf("fresh schema version %q, %v", v, err)
-	}
 	if p, err := db.Pending(ctx, pool); err != nil || !slices.Contains(p, "0001") {
 		t.Fatalf("pending on a fresh schema: %v, %v", p, err)
 	}
@@ -189,13 +186,31 @@ func TestMigrateFailureRollsBack(t *testing.T) {
 	if !a || b {
 		t.Errorf("table a exists %v (want true), b exists %v (want false)", a, b)
 	}
-	if v, _ := db.SchemaVersion(ctx, pool); v != "0001" {
-		t.Errorf("schema version %q", v)
+	if p, err := db.PendingFS(ctx, pool, fsys); err != nil || !slices.Equal(p, []string{"0002"}) {
+		t.Errorf("pending after the failure: %v, %v", p, err)
 	}
 
 	// The lock was released: fixing the file lets the next run continue.
 	fsys["0002_bad.sql"] = &fstest.MapFile{Data: []byte(`CREATE TABLE b (id int);`)}
 	if applied, err := db.MigrateFS(ctx, pool, fsys, (&capture{}).logger()); err != nil || !slices.Equal(applied, []string{"0002"}) {
 		t.Errorf("retry: %v, %v", applied, err)
+	}
+}
+
+// A lower version merged after a higher one was applied is still pending, and applied.
+func TestMigrateLateLowerVersion(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.Open(t)
+	ctx := context.Background()
+	first := fstest.MapFS{"0001_a.sql": {Data: []byte(`SELECT 1`)}, "0003_c.sql": {Data: []byte(`SELECT 1`)}}
+	if _, err := db.MigrateFS(ctx, pool, first, (&capture{}).logger()); err != nil {
+		t.Fatal(err)
+	}
+	later := fstest.MapFS{"0001_a.sql": first["0001_a.sql"], "0002_b.sql": {Data: []byte(`SELECT 1`)}, "0003_c.sql": first["0003_c.sql"]}
+	if p, err := db.PendingFS(ctx, pool, later); err != nil || !slices.Equal(p, []string{"0002"}) {
+		t.Errorf("pending: %v, %v", p, err)
+	}
+	if applied, err := db.MigrateFS(ctx, pool, later, (&capture{}).logger()); err != nil || !slices.Equal(applied, []string{"0002"}) {
+		t.Errorf("applied: %v, %v", applied, err)
 	}
 }

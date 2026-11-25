@@ -66,12 +66,17 @@ func connectError(dsn string, err error) error {
 	return fmt.Errorf("cannot connect to the database at %s: %s (cause: %w)", where, hint, err)
 }
 
-// Redact returns dsn with its password masked, safe to log (spec §2.4.3). A DSN in the
-// key=value form is reduced to a placeholder, because it cannot be masked reliably.
+// Redact returns dsn with its password masked, safe to log (spec §2.4.3): both the
+// user:password@ form and a password=… query parameter, which pgx also accepts. A DSN in
+// the key=value form is reduced to a placeholder, because it cannot be masked reliably.
 func Redact(dsn string) string {
 	u, err := url.Parse(dsn)
 	if err != nil || u.Scheme == "" {
 		return "(DSN in key=value form)"
+	}
+	if q := u.Query(); q.Has("password") {
+		q.Set("password", "xxxxx")
+		u.RawQuery = q.Encode()
 	}
 	return u.Redacted()
 }

@@ -13,6 +13,7 @@ import (
 
 	g "maragu.dev/gomponents"
 
+	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/views/pages"
 	"github.com/laposa/tmock/app-go/static"
 )
@@ -77,7 +78,8 @@ func contentETags(fsys fs.FS) map[string]string {
 func render(w http.ResponseWriter, r *http.Request, status int, n g.Node) {
 	var buf bytes.Buffer
 	if err := n.Render(&buf); err != nil {
-		slog.ErrorContext(r.Context(), "rendering page failed", "url.path", r.URL.Path, "error", err)
+		slog.ErrorContext(r.Context(), "rendering page failed",
+			slog.String(logx.AttrURLPath, r.URL.Path), slog.String(logx.AttrExceptionMessage, err.Error()))
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

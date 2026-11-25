@@ -129,8 +129,10 @@ func MigrateFS(ctx context.Context, pool *sql.DB, fsys fs.FS, logger *slog.Logge
 	return applied, nil
 }
 
-func appliedVersions(ctx context.Context, conn *sql.Conn) (map[string]bool, error) {
-	rows, err := conn.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+func appliedVersions(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}) (map[string]bool, error) {
+	rows, err := q.QueryContext(ctx, `SELECT version FROM schema_migrations`)
 	if err != nil {
 		return nil, fmt.Errorf("reading schema_migrations: %w", err)
 	}
@@ -163,34 +165,31 @@ func apply(ctx context.Context, conn *sql.Conn, m Migration) error {
 	return tx.Commit()
 }
 
-// SchemaVersion returns the latest applied migration version, or "" if none is applied
-// (or schema_migrations does not exist yet).
-func SchemaVersion(ctx context.Context, pool *sql.DB) (string, error) {
-	var v sql.NullString
-	err := pool.QueryRowContext(ctx, `SELECT max(version) FROM schema_migrations`).Scan(&v)
-	if err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "42P01" { // undefined_table
-			return "", nil
-		}
-		return "", err
-	}
-	return v.String, nil
-}
-
 // Pending returns the versions of the embedded migrations that are not applied yet.
 func Pending(ctx context.Context, pool *sql.DB) ([]string, error) {
-	migrations, err := Load(Migrations)
+	return PendingFS(ctx, pool, Migrations)
+}
+
+// PendingFS returns the versions of the migrations in fsys that are not recorded in
+// schema_migrations, using the same rule as MigrateFS: a version counts as applied only if
+// it is recorded, so a lower version added after a higher one was applied is still pending.
+// Without a schema_migrations table, every migration is pending.
+func PendingFS(ctx context.Context, pool *sql.DB, fsys fs.FS) ([]string, error) {
+	migrations, err := Load(fsys)
 	if err != nil {
 		return nil, err
 	}
-	current, err := SchemaVersion(ctx, pool)
+	done, err := appliedVersions(ctx, pool)
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) && pg.Code == "42P01" { // undefined_table: nothing applied yet
+		done, err = map[string]bool{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
 	var out []string
 	for _, m := range migrations {
-		if m.Version > current {
+		if !done[m.Version] {
 			out = append(out, m.Version)
 		}
 	}
