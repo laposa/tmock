@@ -4,9 +4,10 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I05** (services). You can log in to the dashboard and manage
-  services on the Services page; the other sections are placeholder pages until later
-  iterations build them. The REST API has login, logout, `me` and CRUD on `/api/service`.
+- **Status:** iteration **I06** (scenarios). You can log in to the dashboard and manage
+  services and scenarios; Clients, Accounts and My Account are placeholder pages until later
+  iterations build them. The REST API has login, logout, `me` and CRUD on `/api/service` and
+  `/api/scenario`.
   Progress is tracked in spec §16.
 
 ## Prerequisites
@@ -90,8 +91,41 @@ your `PATH`, so run it as `bin/tmock <command>` from `app-go/` (or without build
 | `bin/tmock migrate` | Applies pending migrations from `internal/db/migrations/` and exits. Safe to run concurrently |
 | `bin/tmock seed` | Creates the first admin from `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` if there are no users; otherwise does nothing |
 
-What to check after I05 (the earlier checks still apply; start the server with `make run` and
-log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`):
+What to check after I06 (the earlier checks still apply; start the server with `make run`, log
+in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`, and add a service first):
+
+| Check | Expected |
+|---|---|
+| Open <http://localhost:3000/scenarios> | "Add Scenario" and "No scenarios yet." |
+| Add Scenario | the editor: Name, Service, then **Request Conditions** (Method, Path, Condition) and **Response Modifications** (Code, Headers, Body), each with a switch that is off |
+| Switch each field on and fill it in: Content-Type `application/json`, a body, Skip Proxy | each field appears when its switch goes on; Skip Proxy only while Body is on; the body's hint reads JSON and "Format JSON" appears |
+| "Format JSON" on `{"a":1,` and on valid JSON | an inline "Not valid JSON: …"; valid JSON is indented. Tab in the body inserts two spaces |
+| Add Header, ✕ on a row; switch Headers off | rows are added and removed; switching off clears them |
+| Close (or Escape) after a change | "You will lose unsaved changes. Are you sure you want to close?"; Cancel keeps the editor. A click on the backdrop never closes it |
+| Create | the editor closes; the scenario is listed in a group named after its service, with Method, Path, Condition and Code; toast `Scenario "…" created` |
+| Hover "Show Headers" / "Show Body" | a popover with the headers as JSON / the first 255 characters of the body |
+| Click "Show Body" | the editor opens scrolled to the body |
+| Edit: switch fields off, Save | the list shows those columns empty; reopening shows the switches off |
+| Code `42`, or the same name twice in a service | the message next to the field, an error toast; the editor stays open and Close still asks |
+| Edit, Delete | "Are you sure you want to delete the scenario …?"; Confirm removes it from the list |
+| Browser console | no errors and no CSP violations (a failed save shows as a `422` network line, which is expected) |
+| curl (below) | `201`, `200`, `204`; a duplicate name `409`; `skipProxy` without a body `400`; without the cookie `401` |
+| Console log | one `tmock.entity.changed` line per change with `tmock.entity.type=scenario`, `tmock.service` and `tmock.scenario` |
+| `make test-db` | the scenarios store, use cases, endpoints and UI handlers |
+
+```bash
+curl -b /tmp/cj -H 'Content-Type: application/json' \
+  -d '{"service":"svc","name":"down","responseCode":503,"responseHeaders":{"Content-Type":"application/json"},"responseBody":"{}","skipProxy":true}' \
+  localhost:3000/api/scenario
+curl -b /tmp/cj 'localhost:3000/api/scenario?service=svc'
+curl -b /tmp/cj -X PATCH -H 'Content-Type: application/json' -d '{"responseBody":null,"skipProxy":false}' localhost:3000/api/scenario/1
+curl -b /tmp/cj -X DELETE localhost:3000/api/scenario/1
+```
+
+In the editor, a header row with an empty value is saved as `null`: the proxy removes that
+header from the upstream response (spec §7.8).
+
+What to check after I05:
 
 | Check | Expected |
 |---|---|
@@ -285,14 +319,21 @@ components.Form(components.FormProps{
 - Handlers in `internal/web` answer with `redirect` (303, or `HX-Redirect` for htmx), re-render
   a form with `422` on validation errors, and use `fail` for other errors: the status, an error
   toast and `HX-Reswap: none` (spec §10.2).
-- `static/app.js` holds the Alpine components (`toasts`, `modal`, `confirm`, `requiredFields`);
-  HTML refers to them by name only. A toast is raised from Go with `toast(w, type, title, msg)`,
+- `static/app.js` holds the Alpine components (`toasts`, `modal`, `confirm`, `requiredFields`,
+  `popover`, `headerRows`, `codeEditor`, `scenarioEditor`); HTML refers to them by name only.
+  Another component can ask a question in the confirmation dialog with a `confirm:ask` event
+  on `document` (detail `{question, accept}`). A toast is raised from Go with `toast(w, type, title, msg)`,
   the modal closed with `closeModal(w)`; both add to the same `HX-Trigger` header.
 - **Modals** (the Services page is the example): a button with `hx-get` and
   `hx-target="#modal-body"` loads a `components.ModalContent` holding a `Form` whose `Footer`
   is a `ModalFooter`. The form posts with `hx-target="#modal-body"`, so a `422` replaces the
   modal content with the re-rendered form. A successful save answers with the refreshed list
   and `HX-Retarget` / `HX-Reswap: outerHTML` pointing at it, plus a toast and `closeModal`.
+- **Optional fields** (the scenario editor is the example): `components.ToggleField` pairs a
+  switch with its control and shows one or the other with CSS (`:has`), so it works without
+  JavaScript; the handler ignores a control whose switch is off.
+- An error about one field (`app.Error.Field`, such as a taken name) is shown next to that
+  field; other conflicts above the form.
 
 ## Logging
 
@@ -317,7 +358,7 @@ cmd/tmock/            the binary: config, logging set-up, lifecycle; the only pa
                       wires the UI into the server
 dev/vendorjs/         `make vendor-js`: re-downloads and verifies vendored JavaScript
 dev/otelcol.yaml      collector config for `make otel-up`
-internal/api/         REST handlers (health check, login, logout, me)
+internal/api/         REST handlers (health check, login, logout, me, services, scenarios)
 internal/app/         use cases shared by the REST API and the UI; app.Error (spec §2.1, §6.2)
 internal/auth/        sessions: cookie, lookup, logout, hourly sweep; the user and admin guards
 internal/auth/authtest/  in-memory session store for handler tests
@@ -326,7 +367,7 @@ internal/config/      configuration and .env loading (spec §4)
 internal/db/          connection pool, typed errors, migration runner and migrations (spec §3.3, §5)
 internal/db/dbtest/   per-test schemas for DB integration tests
 internal/password/    PBKDF2 password hashing (spec §9.1)
-internal/store/       repositories over database/sql (users and sessions so far)
+internal/store/       repositories over database/sql (users, sessions, services, scenarios)
 internal/httpx/       HTTP plumbing: error format, JSON decode/encode, Optional[T], Validator,
                       panic recovery, security headers, cross-origin protection, proxy CORS
 internal/logx/        log handlers, event names, trace context, request log (spec §2.4)

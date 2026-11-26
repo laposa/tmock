@@ -7,6 +7,9 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/laposa/tmock/app-go/internal/app"
 	"github.com/laposa/tmock/app-go/internal/logx"
@@ -59,7 +62,27 @@ func trigger(w http.ResponseWriter, name string, detail map[string]string) {
 	if err != nil {
 		panic(err) // strings always marshal
 	}
-	w.Header().Set("HX-Trigger", string(b))
+	w.Header().Set("HX-Trigger", asciiJSON(b))
+}
+
+// asciiJSON writes every non-ASCII character of the JSON b as a \uXXXX escape (a
+// surrogate pair above U+FFFF). Browsers read header values as Latin-1, so UTF-8 bytes in
+// HX-Trigger would reach the page garbled ("Café" as "CafÃ©"); the escaped JSON decodes
+// to the same strings. Outside strings JSON is ASCII anyway.
+func asciiJSON(b []byte) string {
+	var sb strings.Builder
+	for _, r := range string(b) {
+		switch {
+		case r < utf8.RuneSelf:
+			sb.WriteRune(r)
+		case r > 0xFFFF:
+			r1, r2 := utf16.EncodeRune(r)
+			fmt.Fprintf(&sb, `\u%04x\u%04x`, r1, r2)
+		default:
+			fmt.Fprintf(&sb, `\u%04x`, r)
+		}
+	}
+	return sb.String()
 }
 
 // fail answers a request whose use case failed with anything but a form error

@@ -278,7 +278,7 @@ Durations are logged in milliseconds as integers (`tmock.duration_ms`).
 | `tmock.auth.login.failed` | warn | wrong email or password | `client.address` (never the email or password) | I04 |
 | `tmock.auth.logout` | info | logout | `user.id` | I04 |
 | `tmock.session.swept` | debug | hourly sweep (§9.2) | `tmock.sessions.deleted` | I04 |
-| `tmock.entity.changed` | info | a service, scenario, client or user was created, updated or deleted, or a client token was generated or revoked | `tmock.entity.type`, `tmock.entity.id`, `tmock.entity.action` (`create` \| `update` \| `delete` \| `token-generate` \| `token-revoke` \| `disable-all`), `tmock.actor` (`user` \| `client-token`), `user.id` or `tmock.client.id`; for a service also `tmock.service` (its path after the change) | I05–I08 |
+| `tmock.entity.changed` | info | a service, scenario, client or user was created, updated or deleted, or a client token was generated or revoked | `tmock.entity.type`, `tmock.entity.id`, `tmock.entity.action` (`create` \| `update` \| `delete` \| `token-generate` \| `token-revoke` \| `disable-all`), `tmock.actor` (`user` \| `client-token`), `user.id` or `tmock.client.id`; for a service also `tmock.service` (its path after the change); for a scenario `tmock.service` and `tmock.scenario` (its name) | I05–I08 |
 | `tmock.catalog.rebuilt` | debug | a new snapshot is in place (§7.2) | `tmock.duration_ms`, `tmock.catalog.services`, `tmock.catalog.scenarios`, `tmock.catalog.clients` | I09 |
 | `tmock.catalog.rebuild_failed` | error | the rebuild failed; the old snapshot stays | `error.type`, `exception.message` | I09 |
 | `tmock.proxy.request` | info | each proxy request (§7.9) | `http.request.method`, `url.path`, `url.query`, `http.response.status_code`, `client.address`, `tmock.service`, `server.address` (upstream host), `tmock.duration_ms`, `http.response.body.size` (when known); from I10 also `tmock.client`, `tmock.scenario`, `tmock.mocked` (array of `status`, `headers`, `body`), `tmock.proxy_skipped` | I09, I10 |
@@ -680,7 +680,10 @@ field name (the message says which type was expected); Go 1.25 names the field (
 A path id must be written canonically (`/api/service/7`); `0`, `+7` and `007` are `400`.
 
 Use cases in `internal/app` return `*app.Error` (kinds `Invalid`, `Unauthorized`, `Forbidden`,
-`NotFound`, `Conflict`) for expected failures; its message and details are safe to show. The REST
+`NotFound`, `Conflict`) for expected failures; its message and details are safe to show. A
+`NotFound` or `Conflict` about one input field (a taken scenario name, an unknown service) names
+it in `Error.Field`, which the UI uses to show the message next to that field; the REST API does
+not write it (found in I06). The REST
 API writes it with `httpx.WriteErr` as the body above, the UI shows it as a toast and next to the
 form fields (§10.2). Any other error is unexpected: `500`, logged, never shown.
 
@@ -735,6 +738,20 @@ is 1–255 characters. Leading and trailing white space is trimmed from all thre
 Validation: `requestMethod` ∈ `GET POST PUT PATCH DELETE HEAD OPTIONS` (stored upper-case);
 `responseCode` 100–599; `responseHeaders` is an object whose values are strings or `null`;
 `skipProxy: true` requires a non-null `responseBody`.
+
+Found in I06:
+
+- Values are normalised before they are checked: `service`, `name`, `requestMethod`,
+  `requestCondition` are trimmed, `requestPath` is also trimmed of `/`; an empty string (and an
+  empty `responseHeaders` object) is stored as `NULL` (§5.1). `responseBody` is stored as
+  written, but `""` is unset too, so `skipProxy` with an empty body is `400`.
+- Header names must be HTTP tokens and must not differ only in case (`X-A` and `x-a` are the
+  same header); values must not contain line breaks. All header problems are reported under
+  `details.responseHeaders`.
+- The unknown-service `404` comes after validation. A `PATCH` with `service` moves the scenario
+  to that service. `?service=` with an unknown path returns `[]`.
+- The `409` message is `A scenario named "x" already exists in service "svc"`; the scenario's
+  `404` is `Scenario 7 not found`.
 
 **Clients** (guard: `token-or-user` on `GET`/`PATCH /api/client/{id}`, `user` elsewhere)
 
@@ -1147,7 +1164,8 @@ implementation is new.
 - **Confirmations** use a second, smaller `<dialog id="confirm">`. Buttons carry `hx-confirm`;
   `app.js` cancels htmx 4's `htmx:confirm` event, shows the question, and calls
   `issueRequest()` on Confirm or `dropRequest()` on Cancel or Escape, instead of
-  `window.confirm`.
+  `window.confirm`. Alpine components that need to ask (the scenario editor's unsaved-changes
+  guard) dispatch `confirm:ask` on `document` with `{question, accept}` (found in I06).
 - **Login:** a failed login re-renders the form with `422` and the message above the fields
   (empty fields: the messages next to them), like any form error. A logged-in user who opens
   `/login` is redirected to `/`. Logout is a `POST /logout` form in the navigation, not a link. It asks "Are you sure you want to
@@ -1206,7 +1224,13 @@ Every bullet is an acceptance item for its iteration.
     add and remove; switching off clears them); Body (a code textarea with a language hint
     JSON/HTML/Plain text, derived from the `Content-Type` header row); Skip Proxy (shown only while
     Body is enabled).
-  - A field that is switched off is saved as unset.
+  - A field that is switched off is saved as unset, and so is one that is on but empty.
+  - Found in I06: the switches show and hide their fields with CSS (`:has`), so the editor also
+    works without JavaScript; the server ignores a field whose switch is off, and Skip Proxy
+    while Body is off. A header row with an empty value is saved as `null` (the proxy removes
+    that header, §7.8), and empty rows are ignored. A taken name or an unknown service is shown
+    next to its field. After a failed save the editor counts as unsaved, so closing it still
+    asks.
 - SC4 Delete asks for confirmation. Closing with unsaved changes asks "You will lose unsaved
   changes. Are you sure you want to close?". The editor does not close on backdrop click.
 - SC5 Errors in the request condition or the template are shown next to the field, with the
@@ -1280,7 +1304,8 @@ change later in one place without editing the pages.
   `internal/views/components`, in its own file: button, link button, icon button, text field,
   select, textarea and code textarea, switch, checkbox, form and form actions, table, chip,
   inline error, popover, collapsible group (`<details>`), menu, card, page header, modal,
-  confirmation dialog, toast region, brand, nav and nav item. Composites built from these (the
+  confirmation dialog, toast region, brand, nav and nav item; from I06 also the toggle field
+  (an optional field with its enable switch) and the form section (`<fieldset>`). Composites built from these (the
   condition-group row, the header key/value rows) are components too, even when only one page
   uses them.
 - **Semantic props, no classes from callers.** A component takes a `…Props` struct with
@@ -1877,7 +1902,7 @@ Update this table as issues are created and closed.
 | I03 | HTTP foundation | #40 | In review | JSON 405 with `Allow`; `app.Error` kinds; Optional field name caveat on Go 1.27 |
 | I04 | Login, sessions, UI shell | #43 | Done | `internal/views/hx` instead of helpers in `web`; toasts need `"target":"body"`; placeholder pages until I05–I08 |
 | I05 | Services | #45 | In review | path `.`/`..` rejected; modal saves answer with the list via `HX-Retarget`; `tmock.service` on the entity event; table, link button, modal content/footer components |
-| I06 | Scenarios | | Planned | |
+| I06 | Scenarios | #47 | In review | empty values unset, headers checked as HTTP tokens; `app.Error.Field` puts conflicts next to their field; `confirm:ask` for the unsaved-changes guard; switches toggle fields with CSS `:has`; select, switch, toggle field, form section, collapsible, popover, header rows and code textarea components; a test that every component has an `app.css` section |
 | I07 | Clients, assignments, tokens | | Planned | |
 | I08 | Condition builder, accounts (M1) | | Planned | |
 | I09 | Proxy core and catalog cache | | Planned | |

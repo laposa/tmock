@@ -195,3 +195,106 @@ func TestLinkButton(t *testing.T) {
 	check(t, "link button", LinkButton(LinkButtonProps{Label: "My <svc>", Attrs: []g.Node{click}}),
 		`<button type="button" class="link-button" x-on:click="go">My &lt;svc&gt;</button>`)
 }
+
+func TestSelect(t *testing.T) {
+	check(t, "all options", Select(SelectProps{Label: "Service", Name: "service", ID: "s",
+		Options: []SelectOption{{Value: "a", Label: "A <1>"}, {Value: "b"}}, Value: "b", Placeholder: "Pick",
+		Required: true, Hint: "ignored when there is an error", Error: "bad", Attrs: []g.Node{click}}),
+		`<div class="field"><label class="field__label" for="s">Service</label>`+
+			`<select class="select" id="s" name="service" required aria-invalid="true" aria-describedby="s-message" x-on:click="go">`+
+			`<option value="">Pick</option><option value="a">A &lt;1&gt;</option><option value="b" selected>b</option></select>`+
+			`<p class="field__error" id="s-message">bad</p></div>`)
+	check(t, "placeholder selected, hint", Select(SelectProps{Label: "M", Name: "m", Options: []SelectOption{{Value: "GET"}}, Placeholder: "Any", Hint: "h"}),
+		`<div class="field"><label class="field__label" for="m">M</label><select class="select" id="m" name="m" aria-describedby="m-message">`+
+			`<option value="" selected>Any</option><option value="GET">GET</option></select><p class="field__hint" id="m-message">h</p></div>`)
+}
+
+func TestSwitch(t *testing.T) {
+	check(t, "checked, with error", Switch(SwitchProps{Label: "Skip", Name: "skip", ID: "sk", Checked: true, Error: "needs body", Attrs: []g.Node{click}}),
+		`<div class="switch"><label class="switch__control"><input class="switch__input" type="checkbox" role="switch" id="sk" name="skip" checked `+
+			`aria-invalid="true" aria-describedby="sk-message" x-on:click="go"><span class="switch__track" aria-hidden="true"></span>`+
+			`<span class="switch__label">Skip</span></label><p class="switch__error" id="sk-message">needs body</p></div>`)
+	check(t, "off, hidden label, value, disabled", Switch(SwitchProps{Label: "On", HideLabel: true, Value: "1", Disabled: true}),
+		`<div class="switch"><label class="switch__control"><input class="switch__input" type="checkbox" role="switch" value="1" disabled>`+
+			`<span class="switch__track" aria-hidden="true"></span><span class="switch__label switch__label--hidden">On</span></label></div>`)
+}
+
+func TestToggleField(t *testing.T) {
+	check(t, "on: switch, label, control", ToggleField(ToggleFieldProps{ID: "t", Label: "Path", Name: "pathEnabled", On: true, Control: []g.Node{g.Text("[field]")}}),
+		`<div class="toggle-field" id="t"><div class="toggle-field__switch"><div class="switch"><label class="switch__control">`+
+			`<input class="switch__input" type="checkbox" role="switch" name="pathEnabled" checked><span class="switch__track" aria-hidden="true"></span>`+
+			`<span class="switch__label switch__label--hidden">Path</span></label></div></div>`+
+			`<span class="toggle-field__label" aria-hidden="true">Path</span><div class="toggle-field__control">[field]</div></div>`)
+	check(t, "off", ToggleField(ToggleFieldProps{Label: "Code", Name: "codeEnabled", SwitchAttrs: []g.Node{click}}),
+		`<div class="toggle-field"><div class="toggle-field__switch"><div class="switch"><label class="switch__control">`+
+			`<input class="switch__input" type="checkbox" role="switch" name="codeEnabled" x-on:click="go"><span class="switch__track" aria-hidden="true"></span>`+
+			`<span class="switch__label switch__label--hidden">Code</span></label></div></div>`+
+			`<span class="toggle-field__label" aria-hidden="true">Code</span><div class="toggle-field__control"></div></div>`)
+}
+
+func TestFormSection(t *testing.T) {
+	check(t, "title then fields", FormSection(FormSectionProps{Title: "Request <Conditions>", Fields: []g.Node{g.Text("[a]"), g.Text("[b]")}}),
+		`<fieldset class="form-section"><legend class="form-section__title">Request &lt;Conditions&gt;</legend>[a][b]</fieldset>`)
+}
+
+func TestCollapsible(t *testing.T) {
+	check(t, "open with meta", Collapsible(CollapsibleProps{Title: "Svc", Meta: "svc", Open: true, Body: []g.Node{g.Text("[t]")}, Attrs: []g.Node{click}}),
+		`<details class="collapsible" open x-on:click="go"><summary class="collapsible__summary"><span class="collapsible__title">Svc</span>`+
+			`<span class="collapsible__meta">svc</span></summary><div class="collapsible__body">[t]</div></details>`)
+	check(t, "closed", Collapsible(CollapsibleProps{Title: "<Svc>"}),
+		`<details class="collapsible"><summary class="collapsible__summary"><span class="collapsible__title">&lt;Svc&gt;</span></summary>`+
+			`<div class="collapsible__body"></div></details>`)
+}
+
+func TestPopover(t *testing.T) {
+	check(t, "preformatted", Popover(PopoverProps{ID: "p", Trigger: g.Text("[trigger]"), Text: "{\n  \"a\": 1\n}", Preformatted: true}),
+		`<div class="popover" x-data="popover" x-on:mouseenter="show" x-on:mouseleave="hide" x-on:focusin="show" x-on:focusout="hide">[trigger]`+
+			`<div class="popover__panel" id="p" popover="manual" role="tooltip"><pre class="popover__text popover__text--pre">{
+  &#34;a&#34;: 1
+}</pre></div></div>`)
+	check(t, "text", Popover(PopoverProps{ID: "p", Trigger: g.Text("[trigger]"), Text: "<x>"}),
+		`<div class="popover" x-data="popover" x-on:mouseenter="show" x-on:mouseleave="hide" x-on:focusin="show" x-on:focusout="hide">[trigger]`+
+			`<div class="popover__panel" id="p" popover="manual" role="tooltip"><p class="popover__text">&lt;x&gt;</p></div></div>`)
+}
+
+func TestHeaderRows(t *testing.T) {
+	row := func(name, value string) string {
+		v := func(s string) string {
+			if s == "" {
+				return ""
+			}
+			return ` value="` + s + `"`
+		}
+		return `<div class="header-rows__row" data-header-row>` +
+			`<input class="header-rows__input" name="hn" aria-label="Header name" placeholder="Header" autocomplete="off"` + v(name) + `>` +
+			`<input class="header-rows__input" name="hv" aria-label="Header value" placeholder="Value (empty removes the header)" autocomplete="off"` + v(value) + `>` +
+			`<button type="button" class="header-rows__remove" aria-label="Remove header" x-on:click="remove">✕</button></div>`
+	}
+	tail := `<template data-header-row-template>` + row("", "") + `</template>` +
+		`<div class="header-rows__actions"><button type="button" class="button button--text" x-on:click="add">Add Header</button></div>`
+	check(t, "rows and error", HeaderRows(HeaderRowsProps{Label: "Headers", NameField: "hn", ValueField: "hv",
+		Rows: []HeaderRow{{Name: "A", Value: "1"}, {Name: "B"}}, Error: "dup"}),
+		`<div class="header-rows" x-data="headerRows" role="group" aria-label="Headers"><span class="header-rows__label" aria-hidden="true">Headers</span><div class="header-rows__list" data-header-rows>`+
+			row("A", "1")+row("B", "")+`</div>`+tail+`<p class="header-rows__error" role="alert">dup</p></div>`)
+	check(t, "no rows: one empty row", HeaderRows(HeaderRowsProps{Label: "Headers", NameField: "hn", ValueField: "hv"}),
+		`<div class="header-rows" x-data="headerRows" role="group" aria-label="Headers"><span class="header-rows__label" aria-hidden="true">Headers</span><div class="header-rows__list" data-header-rows>`+
+			row("", "")+`</div>`+tail+`</div>`)
+}
+
+func TestCodeTextarea(t *testing.T) {
+	check(t, "JSON with error; a leading newline survives", CodeTextarea(CodeTextareaProps{Label: "Body", Name: "body", ID: "b", Value: "\n{<a>}",
+		Language: LanguageJSON, Error: "bad", Rows: 5, Attrs: []g.Node{click}}),
+		`<div class="field"><label class="field__label" for="b">Body</label><div class="code-field" x-data="codeEditor" data-language="JSON">`+
+			`<div class="code-field__toolbar"><span class="code-field__language" x-text="language">JSON</span>`+
+			`<button type="button" class="button button--text" hidden x-bind:hidden="notJSON" x-on:click="format">Format JSON</button></div>`+
+			`<textarea class="code-field__input" id="b" name="body" rows="5" spellcheck="false" wrap="off" autocapitalize="off" x-on:keydown.tab="indent" `+
+			`aria-invalid="true" aria-describedby="b-message" x-on:click="go">`+"\n\n"+`{&lt;a&gt;}</textarea>`+
+			`<p class="code-field__error" role="alert" x-show="formatError" x-text="formatError"></p></div>`+
+			`<p class="field__error" id="b-message">bad</p></div>`)
+	check(t, "defaults: plain text, 12 rows", CodeTextarea(CodeTextareaProps{Label: "Body", Name: "body"}),
+		`<div class="field"><label class="field__label" for="body">Body</label><div class="code-field" x-data="codeEditor" data-language="Plain text">`+
+			`<div class="code-field__toolbar"><span class="code-field__language" x-text="language">Plain text</span>`+
+			`<button type="button" class="button button--text" hidden x-bind:hidden="notJSON" x-on:click="format">Format JSON</button></div>`+
+			`<textarea class="code-field__input" id="body" name="body" rows="12" spellcheck="false" wrap="off" autocapitalize="off" x-on:keydown.tab="indent">`+"\n"+`</textarea>`+
+			`<p class="code-field__error" role="alert" x-show="formatError" x-text="formatError"></p></div></div>`)
+}

@@ -28,7 +28,11 @@ type Error struct {
 	Kind    Kind
 	Message string
 	Details map[string]string // field path → message; only for KindInvalid
-	Err     error             // the underlying cause, if any; never shown
+	// Field is the input field a NotFound or Conflict is about, such as "service" for an
+	// unknown service, so that the UI can show the message next to it. The REST API
+	// does not write it: the message names the problem.
+	Field string
+	Err   error // the underlying cause, if any; never shown
 }
 
 func (e *Error) Error() string {
