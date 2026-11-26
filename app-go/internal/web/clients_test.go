@@ -133,6 +133,7 @@ func TestClientsPage(t *testing.T) {
 	body = serve(h, "GET", u+"/scenarios", c, true).Body.String()
 	wantContains(t, "assignment modal", body, `id="modal-title">Scenarios of Phone</h2>`,
 		`<span class="collapsible__title">My Svc</span><span class="collapsible__meta">svc</span>`,
+		`<div class="table table--fixed">`,
 		`<div id="assignment-`+id+`-`+slow+`"><div class="switch"><label class="switch__control"><input class="switch__input" type="checkbox" role="switch" name="assigned" hx-post="`+u+`/scenarios/`+slow+`" hx-trigger="change" hx-target="#assignment-`+id+`-`+slow+`" hx-swap="outerHTML">`,
 		`id="scenario-`+slow+`-info" popover="manual"`, "Method:    any")
 	assertNoEval(t, body)

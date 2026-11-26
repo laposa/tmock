@@ -556,6 +556,11 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
   overflow-wrap: anywhere;
 }
 
+/* TableProps.Widths: the same widths in every table, whatever the content. */
+.table--fixed .table__table { table-layout: fixed; }
+.table__col--small { width: 6.5rem; }
+.table__col--medium { width: 10rem; }
+
 .table__row + .table__row .table__cell { border-top: 1px solid var(--color-table-border); }
 
 .table__row:hover { background: var(--color-table-row-hover); }

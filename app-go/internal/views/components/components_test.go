@@ -182,6 +182,16 @@ func TestTable(t *testing.T) {
 		`<div class="table"><table class="table__table"><thead><tr>`+
 			`<th class="table__head" scope="col">Name</th><th class="table__head" scope="col">Path</th><th class="table__head" scope="col">URL</th></tr></thead><tbody>`+
 			`<tr><td class="table__empty" colspan="3">Nothing yet</td></tr></tbody></table></div>`)
+	check(t, "fixed widths", Table(TableProps{Columns: []string{"Name", "Code", "Body"}, Widths: []ColumnWidth{ColumnFill, ColumnSmall, ColumnMedium}}),
+		`<div class="table table--fixed"><table class="table__table"><colgroup>`+
+			`<col class="table__col"><col class="table__col table__col--small"><col class="table__col table__col--medium">`+
+			`</colgroup><thead><tr><th class="table__head" scope="col">Name</th><th class="table__head" scope="col">Code</th><th class="table__head" scope="col">Body</th></tr></thead><tbody></tbody></table></div>`)
+	defer func() {
+		if recover() == nil {
+			t.Error("a width missing for a column did not panic")
+		}
+	}()
+	Table(TableProps{Columns: []string{"Name", "Code"}, Widths: []ColumnWidth{ColumnFill}})
 	check(t, "empty without message", Table(TableProps{Columns: []string{"Name"}}),
 		`<div class="table"><table class="table__table"><thead><tr><th class="table__head" scope="col">Name</th></tr></thead><tbody></tbody></table></div>`)
 }

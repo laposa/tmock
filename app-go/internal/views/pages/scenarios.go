@@ -69,14 +69,20 @@ func Scenarios(p ScenariosProps) g.Node {
 
 var scenarioColumns = []string{"Name", "Method", "Path", "Condition", "Code", "Headers", "Body"}
 
+// scenarioWidths are the same in every service's table, so the tables line up.
+var scenarioWidths = []components.ColumnWidth{
+	components.ColumnFill, components.ColumnSmall, components.ColumnFill, components.ColumnFill,
+	components.ColumnSmall, components.ColumnMedium, components.ColumnMedium,
+}
+
 // ScenariosList is the scenarios in one collapsible group per service (SC1), in the
 // order given. Groups are open, so that they stay open when the list is replaced after
 // a save.
 func ScenariosList(scenarios []app.Scenario, services []app.Service) g.Node {
 	if len(scenarios) == 0 {
 		return h.Div(h.ID(ScenariosListID), components.Table(components.TableProps{
-			Columns: scenarioColumns,
-			Empty:   "No scenarios yet. Add one to mock a response.",
+			Columns: scenarioColumns, Widths: scenarioWidths,
+			Empty: "No scenarios yet. Add one to mock a response.",
 		}))
 	}
 	names := map[string]string{}
@@ -100,7 +106,7 @@ func ScenariosList(scenarios []app.Scenario, services []app.Service) g.Node {
 		}
 		groups = append(groups, components.Collapsible(components.CollapsibleProps{
 			Title: title, Meta: path, Open: true,
-			Body: []g.Node{components.Table(components.TableProps{Columns: scenarioColumns, Rows: rows})},
+			Body: []g.Node{components.Table(components.TableProps{Columns: scenarioColumns, Widths: scenarioWidths, Rows: rows})},
 		}))
 		start = end
 	}

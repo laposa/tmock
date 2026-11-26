@@ -201,7 +201,8 @@ func Assignments(p AssignmentsProps) g.Node {
 		}
 		groups = append(groups, components.Collapsible(components.CollapsibleProps{
 			Title: title, Meta: path, Open: n > 0 || len(p.Scenarios) == end-start,
-			Body: []g.Node{components.Table(components.TableProps{Columns: []string{"Assigned", "Settings"}, Rows: rows})},
+			Body: []g.Node{components.Table(components.TableProps{Columns: []string{"Assigned", "Settings"}, Rows: rows,
+				Widths: []components.ColumnWidth{components.ColumnFill, components.ColumnSmall}})},
 		}))
 		start = end
 	}
