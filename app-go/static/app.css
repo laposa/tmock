@@ -43,13 +43,17 @@
   --color-table-border: rgba(255, 255, 255, 0.12);
   --color-table-row-hover: rgba(255, 255, 255, 0.04);
 
+  /* Vuetify v-chip on the dark table */
+  --color-chip-bg: rgba(255, 255, 255, 0.12);
+  --color-chip-text: #ffffff;
+
   /* Vuetify v-tooltip */
   --color-tooltip-bg: rgba(97, 97, 97, 0.92);
   --color-tooltip-text: #ffffff;
 
   /* Vuetify v-switch: the thumb and the track while off */
   --color-switch-thumb: #ffffff;
-  --color-switch-track: rgba(0, 0, 0, 0.38);
+  --color-switch-track: rgba(128, 128, 128, 0.5); /* readable on white and on the dark tables */
 
   /* Vuetify colour palette, as the legacy templates named them */
   --color-primary: #3f51b5;            /* color="indigo" */
@@ -97,6 +101,9 @@
   --switch-thumb: 20px;
   --popover-width: 40rem;
   --code-min-height: 12rem;
+  --icon-button-size: 32px;
+  --chip-height: 32px;
+  --chip-radius: 16px;                 /* v-chip: fully rounded */
 
   /* Type: legacy base.css */
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
@@ -835,3 +842,83 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
 .code-field__input:focus { outline: 0; }
 
 .code-field__error { padding: var(--space-1) var(--space-3); font-size: var(--font-size-small); color: var(--color-text-error); }
+
+/* ── chip.go ───────────────────────────────────────────────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--chip-height);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  font-size: var(--font-size-button);
+  color: var(--color-chip-text);
+  background: var(--color-chip-bg);
+  border-radius: var(--chip-radius);
+  white-space: nowrap;
+}
+
+.chip__strong { font-weight: 600; }
+
+.chip__remove {
+  width: calc(var(--chip-height) - 2 * var(--space-1));
+  height: calc(var(--chip-height) - 2 * var(--space-1));
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.chip__remove:hover { opacity: 1; background: var(--color-chip-bg); }
+
+/* ── chiplist.go ───────────────────────────────────────────────────────────── */
+
+.chip-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; }
+
+/* ── iconbutton.go ─────────────────────────────────────────────────────────── */
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  font: inherit;
+  font-size: var(--font-size-card-title);
+  line-height: 1;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.icon-button:hover { background: var(--color-border); }
+
+/* ── buttongroup.go ────────────────────────────────────────────────────────── */
+
+.button-group { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+
+/* ── copyfield.go ──────────────────────────────────────────────────────────── */
+
+/* Framed by field.go's .field. */
+.copy-field { display: flex; align-items: center; gap: var(--space-2); }
+
+.copy-field__input {
+  flex: 1;
+  min-width: 0;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+  color: var(--color-heading);
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-field-border);
+  border-radius: var(--radius);
+}
+
+.copy-field__input:focus { outline: 0; border-color: var(--color-focus); box-shadow: inset 0 0 0 1px var(--color-focus); }

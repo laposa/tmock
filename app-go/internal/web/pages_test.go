@@ -48,9 +48,8 @@ func TestRouteGuards(t *testing.T) {
 		{"/scenarios", nil, 303, "/login"},
 		{"/accounts", nil, 303, "/login"},
 		{"/my-account", nil, 303, "/login"},
-		{"/", user, 200, ""},
-		// /services and /scenarios with a session need a database: services_test.go,
-		// scenarios_test.go.
+		// /, /services and /scenarios with a session need a database: clients_test.go,
+		// services_test.go, scenarios_test.go.
 		{"/my-account", user, 200, ""},
 		{"/accounts", user, 303, "/"},
 		{"/accounts", admin, 200, ""},
@@ -99,7 +98,7 @@ func TestPlaceholderPages(t *testing.T) {
 	}
 	assertNoEval(t, body)
 
-	if body := serve(h, "GET", "/", admin, false).Body.String(); !strings.Contains(body, `href="/accounts"`) {
+	if body := serve(h, "GET", "/my-account", admin, false).Body.String(); !strings.Contains(body, `href="/accounts"`) {
 		t.Error("admin does not see Accounts")
 	}
 	if body := serve(h, "GET", "/login", nil, false).Body.String(); !strings.Contains(body, `<title>Login · Tmock</title>`) {

@@ -312,6 +312,34 @@ document.addEventListener('alpine:init', () => {
     },
   }));
 
+  // ── Copy field (components.CopyField) ─────────────────────────────────────
+  // Copies the read-only value to the clipboard and confirms with the toast in
+  // data-copied. The Clipboard API needs a secure context (https or localhost); elsewhere
+  // the value is selected and copied the old way, or left selected for Ctrl+C.
+  Alpine.data('copyField', () => ({
+    input() {
+      return this.$root.querySelector('input');
+    },
+    select() {
+      this.input().select();
+    },
+    async copy() {
+      const input = this.input();
+      const done = () => Alpine.store('toasts').add({ type: 'success', title: this.$root.dataset.copied || 'Copied' });
+      try {
+        await navigator.clipboard.writeText(input.value);
+        done();
+      } catch {
+        input.select();
+        if (document.execCommand('copy')) {
+          done();
+        } else {
+          Alpine.store('toasts').add({ type: 'error', title: 'Copy failed', message: 'The text is selected: press Ctrl+C to copy it.' });
+        }
+      }
+    },
+  }));
+
   // Shows on placeholder pages that both libraries are running (I00 verification).
   Alpine.data('jsStatus', () => ({
     message: `htmx ${htmx.version} and Alpine ${Alpine.version} are running.`,

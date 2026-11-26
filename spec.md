@@ -278,7 +278,7 @@ Durations are logged in milliseconds as integers (`tmock.duration_ms`).
 | `tmock.auth.login.failed` | warn | wrong email or password | `client.address` (never the email or password) | I04 |
 | `tmock.auth.logout` | info | logout | `user.id` | I04 |
 | `tmock.session.swept` | debug | hourly sweep (§9.2) | `tmock.sessions.deleted` | I04 |
-| `tmock.entity.changed` | info | a service, scenario, client or user was created, updated or deleted, or a client token was generated or revoked | `tmock.entity.type`, `tmock.entity.id`, `tmock.entity.action` (`create` \| `update` \| `delete` \| `token-generate` \| `token-revoke` \| `disable-all`), `tmock.actor` (`user` \| `client-token`), `user.id` or `tmock.client.id`; for a service also `tmock.service` (its path after the change); for a scenario `tmock.service` and `tmock.scenario` (its name) | I05–I08 |
+| `tmock.entity.changed` | info | a service, scenario, client or user was created, updated or deleted, or a client token was generated or revoked | `tmock.entity.type`, `tmock.entity.id`, `tmock.entity.action` (`create` \| `update` \| `delete` \| `token-generate` \| `token-revoke` \| `disable-all`), `tmock.actor` (`user` \| `client-token`), `user.id` or `tmock.client.id`; for a service also `tmock.service` (its path after the change); for a scenario `tmock.service` and `tmock.scenario` (its name); for a client `tmock.client` (its name). `disable-all` has no `tmock.entity.id` and carries `tmock.clients.disabled` (how many) | I05–I08 |
 | `tmock.catalog.rebuilt` | debug | a new snapshot is in place (§7.2) | `tmock.duration_ms`, `tmock.catalog.services`, `tmock.catalog.scenarios`, `tmock.catalog.clients` | I09 |
 | `tmock.catalog.rebuild_failed` | error | the rebuild failed; the old snapshot stays | `error.type`, `exception.message` | I09 |
 | `tmock.proxy.request` | info | each proxy request (§7.9) | `http.request.method`, `url.path`, `url.query`, `http.response.status_code`, `client.address`, `tmock.service`, `server.address` (upstream host), `tmock.duration_ms`, `http.response.body.size` (when known); from I10 also `tmock.client`, `tmock.scenario`, `tmock.mocked` (array of `status`, `headers`, `body`), `tmock.proxy_skipped` | I09, I10 |
@@ -775,6 +775,24 @@ Rules:
   `cidr` parses as a prefix (`net/netip`); `headerRegex.value` compiles as RE2. Errors name the
   path, for example `condition.or[0].cidr`.
 - `scenarios` is the full list of assigned scenario ids; unknown ids → `400`.
+- Found in I07: duplicate ids in `scenarios` are dropped, and the list is returned sorted.
+  `null` for `name`, `enabled` or `scenarios` is `400`; `null` for `condition` clears it (and is
+  refused while the client is enabled). Unknown ids are listed:
+  `details.scenarios: "unknown scenario ids: 7, 9"`. The enable-rule message is
+  `details.enabled: "a client needs a condition before it can be enabled"`. Condition errors
+  name the path under `condition` (`condition.or[1].cidr`); a node with no or several predicates
+  is reported at its own path (`condition.and[0]`). `ip` and `cidr` must not carry an IPv6 zone.
+  Revoking a token when there is none is `204`.
+- Found in I07 (concurrency): an update is a read-modify-write, so it locks the client's row
+  (`SELECT … FOR UPDATE`) from the read to the write; overlapping updates of one client run
+  one after the other and none is lost (for example a rename in the UI and an enable by token).
+  The UI's assignment switches and chip ✕ change the one `client_scenarios` row, not the whole
+  list, so toggles sent at once all stay. A toggle that changes nothing logs nothing.
+- Found in I07 (token-or-user): with a token, `{id}` is checked before the body; the field
+  check reads only the top-level keys, so a body that is not a JSON object still reaches the
+  handler's `400`. The `403` messages are `This token belongs to another client` and
+  `A client token may only change enabled and scenarios, not: condition, name`. Token changes
+  are logged with `tmock.actor=client-token` and `tmock.client.id`.
 - Every client, scenario and service mutation invalidates the catalog (§7.2). There are no manual
   "clear cache" endpoints.
 
@@ -1201,6 +1219,11 @@ Every bullet is an acceptance item for its iteration.
   saves the assignment **immediately** when toggled, and an info icon showing the scenario's
   settings (popover).
 - C7 Condition builder (§10.5).
+- Found in I07: the table reloads itself when a modal changes a client (the assignment and token
+  modals raise `clients:changed`, the table has `hx-trigger="clients:changed from:body"`).
+  Regenerate also asks first, because the current token stops working. The token modal does not
+  close on a backdrop click, so the token is not lost by accident. Until I08 the condition is
+  edited as JSON in the edit modal ("Conditions" opens it at that field).
 - C8 Token modal, shown right after Generate or Regenerate: the token in a read-only field, a Copy
   button (clipboard, toast "Token copied to clipboard") and the warning "This token is shown only
   once". Revoke asks for confirmation.
@@ -1305,7 +1328,8 @@ change later in one place without editing the pages.
   select, textarea and code textarea, switch, checkbox, form and form actions, table, chip,
   inline error, popover, collapsible group (`<details>`), menu, card, page header, modal,
   confirmation dialog, toast region, brand, nav and nav item; from I06 also the toggle field
-  (an optional field with its enable switch) and the form section (`<fieldset>`). Composites built from these (the
+  (an optional field with its enable switch) and the form section (`<fieldset>`); from I07 the
+  chip list, button group and copy field. Composites built from these (the
   condition-group row, the header key/value rows) are components too, even when only one page
   uses them.
 - **Semantic props, no classes from callers.** A component takes a `…Props` struct with
@@ -1352,7 +1376,9 @@ change later in one place without editing the pages.
 - Golden files live under `testdata/`. Update them with `go test ./... -update`, a flag defined in a
   small test helper.
 - Each DB test creates its own schema (`CREATE SCHEMA t_<random>` + `search_path`) and drops it
-  afterwards, so the tests can run in parallel against one database.
+  afterwards, so the tests can run in parallel against one database. At most 4 DB tests of one
+  package hold a schema at a time, because the parallel tests of all packages otherwise exceed
+  PostgreSQL's default of 100 connections (found in I07).
 
 ### 11.3 Local loop (every iteration)
 
@@ -1903,7 +1929,7 @@ Update this table as issues are created and closed.
 | I04 | Login, sessions, UI shell | #43 | Done | `internal/views/hx` instead of helpers in `web`; toasts need `"target":"body"`; placeholder pages until I05–I08 |
 | I05 | Services | #45 | In review | path `.`/`..` rejected; modal saves answer with the list via `HX-Retarget`; `tmock.service` on the entity event; table, link button, modal content/footer components |
 | I06 | Scenarios | #47 | In review | empty values unset, headers checked as HTTP tokens; `app.Error.Field` puts conflicts next to their field; `confirm:ask` for the unsaved-changes guard; switches toggle fields with CSS `:has`; select, switch, toggle field, form section, collapsible, popover, header rows and code textarea components; a test that every component has an `app.css` section |
-| I07 | Clients, assignments, tokens | | Planned | |
+| I07 | Clients, assignments, tokens | #49 | In review | `internal/condition` (model, parse, validate, empty rule; evaluation in I10); tokens are SHA-256 only; `tmock.client`, `tmock.client.id`, `tmock.clients.disabled`; the table reloads on `clients:changed`; Regenerate asks; chip, chip list, icon button, button group and copy field components; `dbtest` caps parallel DB tests per package |
 | I08 | Condition builder, accounts (M1) | | Planned | |
 | I09 | Proxy core and catalog cache | | Planned | |
 | I10 | Matching and mocking | | Planned | |
