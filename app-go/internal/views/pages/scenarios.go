@@ -289,8 +289,11 @@ func ScenarioForm(p ScenarioFormProps) g.Node {
 				}}),
 				components.FormSection(components.FormSectionProps{Title: "Response Modifications", Fields: []g.Node{
 					toggle("", "Response Code", "responseCode", v.CodeOn, components.TextField(components.TextFieldProps{
-						Label: "Response Code", Name: "responseCode", ID: "scenario-responseCode", Type: "number",
-						Value: v.Code, Error: errs["responseCode"],
+						// Text, not type="number": the browser would block the submit for a value
+						// such as 1.5 without saying why when the field is switched off and
+						// hidden. The server checks the number and shows its message here.
+						Label: "Response Code", Name: "responseCode", ID: "scenario-responseCode",
+						Value: v.Code, Error: errs["responseCode"], Attrs: []g.Node{g.Attr("inputmode", "numeric")},
 					})),
 					toggle(ScenarioHeadersID, "Response Headers", "responseHeaders", v.HeadersOn, components.HeaderRows(components.HeaderRowsProps{
 						Label: "Response Headers", NameField: "headerName", ValueField: "headerValue",
