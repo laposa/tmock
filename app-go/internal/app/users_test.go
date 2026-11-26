@@ -244,13 +244,20 @@ func TestUserChangedEvents(t *testing.T) {
 	bob := must(a.CreateUser(ctx, me, app.UserInput{Name: "Bob", Email: "bob@example.com", Password: "secret-password"}))
 	must(a.UpdateUser(ctx, me, bob.ID, app.UserPatch{Name: httpx.Some("Robert")}))
 	must(a.UpdateProfile(ctx, ann.ID, app.ProfilePatch{Name: httpx.Some("Annie")}))
+	// Saves that change nothing are not logged; a new password alone is a change.
+	must(a.UpdateUser(ctx, me, bob.ID, app.UserPatch{}))
+	if got := must(a.UpdateUser(ctx, me, bob.ID, app.UserPatch{Name: httpx.Some(" Robert "), Admin: httpx.Some(false)})); got.Name != "Robert" {
+		t.Errorf("no-op update returned %+v", got)
+	}
+	must(a.UpdateProfile(ctx, ann.ID, app.ProfilePatch{Name: httpx.Some("Annie"), Email: httpx.Some("ann@example.com")}))
+	must(a.UpdateUser(ctx, me, bob.ID, app.UserPatch{Password: httpx.Some("another-password")}))
 	must(a.DeleteUser(ctx, me, bob.ID))
 
 	events := logs.Events(logx.EventEntityChanged)
 	want := []struct {
 		action string
 		id     int64
-	}{{"create", bob.ID}, {"update", bob.ID}, {"update", ann.ID}, {"delete", bob.ID}}
+	}{{"create", bob.ID}, {"update", bob.ID}, {"update", ann.ID}, {"update", bob.ID}, {"delete", bob.ID}}
 	if len(events) != len(want) {
 		t.Fatalf("events: %+v", events)
 	}
@@ -269,7 +276,7 @@ func TestUserChangedEvents(t *testing.T) {
 				t.Errorf("%d: %s = %q, want %q", i, k, e.Attrs[k], v)
 			}
 		}
-		if strings.Contains(e.Text(), "secret-password") || strings.Contains(e.Text(), "@example.com") {
+		if strings.Contains(e.Text(), "secret-password") || strings.Contains(e.Text(), "another-password") || strings.Contains(e.Text(), "@example.com") {
 			t.Errorf("%d: a password or an email was logged: %s", i, e.Text())
 		}
 	}

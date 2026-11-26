@@ -241,15 +241,14 @@ document.addEventListener('alpine:init', () => {
     },
   }));
 
-  // ── Scenario editor (pages.ScenarioForm, spec §10.3 SC3–SC4) ──────────────
-  // On the editor's <form>. Keeps the body's language hint in step with the
-  // Content-Type header row (the same rule as pages.BodyLanguage), clears the header
-  // rows when their switch goes off, and asks before closing with unsaved changes:
-  // on Close (the modal's Close button calls this component's close(), which is the
-  // nearest one) and on Escape. A form re-rendered after a failed save carries
-  // data-unsaved, since what it shows is not what is stored.
+  // ── Unsaved changes guard ──────────────────────────────────────────────────
+  // On an editor's <form> in the modal (pages.ConditionBuilder, and the scenario editor
+  // below): asks before the modal closes with unsaved changes, on Close (the modal's
+  // Close button calls the nearest component's close(), which is this one) and on
+  // Escape. A form the server marks data-unsaved (a failed save, a builder edit) is
+  // unsaved from the start, since what it shows is not what is stored.
   const UNSAVED_QUESTION = 'You will lose unsaved changes. Are you sure you want to close?';
-  Alpine.data('scenarioEditor', () => ({
+  const unsavedGuard = () => ({
     snapshot: '',
     unsaved: false,
     dialog: null,
@@ -275,6 +274,29 @@ document.addEventListener('alpine:init', () => {
     dirty() {
       return this.unsaved || this.serialize() !== this.snapshot;
     },
+    close() {
+      if (this.dirty()) {
+        this.askToClose();
+        return;
+      }
+      this.dialog?.close();
+    },
+    askToClose() {
+      const dialog = this.dialog;
+      document.dispatchEvent(new CustomEvent('confirm:ask', {
+        detail: { question: UNSAVED_QUESTION, accept: () => dialog?.close() },
+      }));
+    },
+  });
+  Alpine.data('unsavedGuard', unsavedGuard);
+
+  // ── Scenario editor (pages.ScenarioForm, spec §10.3 SC3–SC4) ──────────────
+  // On the editor's <form>. Keeps the body's language hint in step with the
+  // Content-Type header row (the same rule as pages.BodyLanguage), clears the header
+  // rows when their switch goes off, and asks before closing with unsaved changes
+  // (unsavedGuard).
+  Alpine.data('scenarioEditor', () => ({
+    ...unsavedGuard(),
     update() {
       const code = this.$root.querySelector('[data-language]');
       const language = this.bodyLanguage();
@@ -298,19 +320,6 @@ document.addEventListener('alpine:init', () => {
       if (e.target.name !== 'responseHeadersEnabled') return;
       const rows = this.$root.querySelector('[data-header-rows]')?.parentElement;
       rows?.dispatchEvent(new CustomEvent(e.target.checked ? 'header-rows:ensure' : 'header-rows:clear'));
-    },
-    close() {
-      if (this.dirty()) {
-        this.askToClose();
-        return;
-      }
-      this.dialog?.close();
-    },
-    askToClose() {
-      const dialog = this.dialog;
-      document.dispatchEvent(new CustomEvent('confirm:ask', {
-        detail: { question: UNSAVED_QUESTION, accept: () => dialog?.close() },
-      }));
     },
   }));
 

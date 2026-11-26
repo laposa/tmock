@@ -105,6 +105,15 @@ func TestClientsPage(t *testing.T) {
 	if rec.Code != 200 || triggers(t, rec)["toast"]["title"] != `Client "Phone" updated` {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body.String())
 	}
+	// A failed rename shows the typed name, but Delete names the client as stored.
+	rec = send(h, "POST", u, url.Values{"name": {"   "}}, c, true)
+	wantContains(t, "failed rename", rec.Body.String(), `hx-confirm="Are you sure you want to delete the client Phone?"`)
+	if rec.Code != 422 {
+		t.Errorf("failed rename: %d", rec.Code)
+	}
+	rec = send(h, "POST", u, url.Values{"name": {strings.Repeat("x", 300)}}, c, true)
+	wantContains(t, "too long rename", rec.Body.String(), `value="`+strings.Repeat("x", 300)+`"`,
+		`hx-confirm="Are you sure you want to delete the client Phone?"`)
 
 	// C2: with a condition, enabling works; disabling too.
 	rec = send(h, "POST", u+"/condition", url.Values{"n.0.kind": {"group"}, "n.0.0.kind": {"header"}, "n.0.0.header": {"x-test"}, "n.0.0.value": {"1"}}, c, true)

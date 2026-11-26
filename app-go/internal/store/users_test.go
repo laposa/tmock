@@ -103,3 +103,43 @@ func TestUsersCreateFirst(t *testing.T) {
 		t.Errorf("users %+v", list)
 	}
 }
+
+func TestUsersModify(t *testing.T) {
+	t.Parallel()
+	users := store.NewUsers(dbtest.Migrated(t))
+	ctx := context.Background()
+	bob, err := users.Create(ctx, store.NewUser{Name: "Bob", Email: "bob@example.com", PasswordHash: "h1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := func(cur store.User, _ int) (store.UserFields, error) {
+		return store.UserFields{Name: cur.Name, Email: cur.Email, Admin: cur.Admin}, nil
+	}
+	if got, changed, err := users.Modify(ctx, bob.ID, same); err != nil || changed || got != bob {
+		t.Errorf("no change: %+v, %v, %v", got, changed, err)
+	}
+
+	got, changed, err := users.Modify(ctx, bob.ID, func(cur store.User, admins int) (store.UserFields, error) {
+		return store.UserFields{Name: "Robert", Email: cur.Email, Admin: true}, nil
+	})
+	if err != nil || !changed || got.Name != "Robert" || !got.Admin || got.PasswordHash != "h1" {
+		t.Errorf("change: %+v, %v, %v", got, changed, err)
+	}
+	// A new password alone is a change.
+	got, changed, err = users.Modify(ctx, bob.ID, func(cur store.User, _ int) (store.UserFields, error) {
+		return store.UserFields{Name: cur.Name, Email: cur.Email, PasswordHash: "h2", Admin: cur.Admin}, nil
+	})
+	if err != nil || !changed || got.PasswordHash != "h2" {
+		t.Errorf("password: %+v, %v, %v", got, changed, err)
+	}
+
+	refused := errors.New("refused")
+	if _, _, err := users.Modify(ctx, bob.ID, func(store.User, int) (store.UserFields, error) {
+		return store.UserFields{}, refused
+	}); !errors.Is(err, refused) {
+		t.Errorf("fn error: %v", err)
+	}
+	if _, _, err := users.Modify(ctx, bob.ID+100, same); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("unknown id: %v", err)
+	}
+}

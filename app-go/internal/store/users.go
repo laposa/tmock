@@ -157,15 +157,22 @@ type UserFields struct {
 // lock that every other Modify and Delete also takes, so they run one after the other;
 // sessions and logins can still read users meanwhile. fn gets the user and the number of
 // admins, and returns the fields to store; an error from fn is returned as it is and
-// nothing changes. fn must not use the database. Modify returns the user as stored,
-// ErrNotFound, or ErrUnique for a taken email.
-func (r *Users) Modify(ctx context.Context, id int64, fn func(cur User, admins int) (UserFields, error)) (User, error) {
+// nothing changes. fn must not use the database. Modify returns the user as stored and
+// whether anything changed (fields equal to the stored ones, with no new password, are
+// not written), ErrNotFound, or ErrUnique for a taken email.
+func (r *Users) Modify(ctx context.Context, id int64, fn func(cur User, admins int) (UserFields, error)) (User, bool, error) {
 	var out User
+	changed := false
 	err := r.locked(ctx, id, func(tx *sql.Tx, cur User, admins int) error {
 		f, err := fn(cur, admins)
 		if err != nil {
 			return err
 		}
+		if f.PasswordHash == "" && f.Name == cur.Name && f.Email == cur.Email && f.Admin == cur.Admin {
+			out = cur
+			return nil
+		}
+		changed = true
 		hash := f.PasswordHash
 		if hash == "" {
 			hash = cur.PasswordHash
@@ -175,7 +182,10 @@ func (r *Users) Modify(ctx context.Context, id int64, fn func(cur User, admins i
 			id, f.Name, f.Email, hash, f.Admin))
 		return err
 	})
-	return out, err
+	if err != nil {
+		return User{}, false, err
+	}
+	return out, changed, nil
 }
 
 // Delete removes the user with id, with their sessions (cascade), under the lock of

@@ -100,8 +100,11 @@ func ClientsTable(list []app.Client) g.Node {
 
 // ClientFormProps is what the add and edit modals show.
 type ClientFormProps struct {
-	ID          int64 // 0 in the add modal
-	Name        string
+	ID   int64 // 0 in the add modal
+	Name string
+	// StoredName is the client's name as stored, for the Delete confirmation, when Name is
+	// what was typed (a failed save); empty means Name.
+	StoredName  string
 	Error       string
 	FieldErrors map[string]string // "name"
 }
@@ -116,9 +119,13 @@ func ClientForm(p ClientFormProps) g.Node {
 	}
 	var start []g.Node
 	if edit {
+		stored := p.StoredName
+		if stored == "" {
+			stored = p.Name
+		}
 		start = append(start, components.Button(components.ButtonProps{
 			Label: "Delete", Variant: components.ButtonDanger,
-			Attrs: []g.Node{hx.Delete(ClientURL(p.ID)), hx.Confirm("Are you sure you want to delete the client " + p.Name + "?")},
+			Attrs: []g.Node{hx.Delete(ClientURL(p.ID)), hx.Confirm("Are you sure you want to delete the client " + stored + "?")},
 		}))
 	}
 	return components.ModalContent(components.ModalContentProps{

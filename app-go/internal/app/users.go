@@ -96,7 +96,7 @@ func (a *App) CreateUser(ctx context.Context, actor Actor, in UserInput) (User, 
 }
 
 // UpdateUser is an admin's change of the user with id: the fields present in p. The last
-// admin cannot lose the admin flag.
+// admin cannot lose the admin flag. A change to nothing new is not saved or logged.
 func (a *App) UpdateUser(ctx context.Context, actor Actor, id int64, p UserPatch) (User, error) {
 	var v httpx.Validator
 	v.Check(!p.Name.Null, "name", "is required")
@@ -125,7 +125,7 @@ func (a *App) UpdateUser(ctx context.Context, actor Actor, id int64, p UserPatch
 		}
 	}
 	var newEmail string
-	u, err := a.users.Modify(ctx, id, func(cur store.User, admins int) (store.UserFields, error) {
+	u, changed, err := a.users.Modify(ctx, id, func(cur store.User, admins int) (store.UserFields, error) {
 		f := store.UserFields{Name: cur.Name, Email: cur.Email, PasswordHash: hash, Admin: cur.Admin}
 		if s, ok := name.Get(); ok {
 			f.Name = s
@@ -145,7 +145,9 @@ func (a *App) UpdateUser(ctx context.Context, actor Actor, id int64, p UserPatch
 	if err != nil {
 		return User{}, StoreError(err, userNotFound(id), emailTaken(newEmail))
 	}
-	a.entityChanged(ctx, actor, logx.EntityUser, u.ID, logx.ActionUpdate)
+	if changed {
+		a.entityChanged(ctx, actor, logx.EntityUser, u.ID, logx.ActionUpdate)
+	}
 	return UserFromStore(u), nil
 }
 
@@ -169,7 +171,8 @@ func (a *App) DeleteUser(ctx context.Context, actor Actor, id int64) (User, erro
 }
 
 // UpdateProfile is a user's change of their own account (spec §6.4, §10.3 M1): the fields
-// present in p. A new password needs the correct current password.
+// present in p. A new password needs the correct current password. A change to nothing
+// new is not saved or logged.
 func (a *App) UpdateProfile(ctx context.Context, userID int64, p ProfilePatch) (User, error) {
 	var v httpx.Validator
 	v.Check(!p.Name.Null, "name", "is required")
@@ -214,7 +217,7 @@ func (a *App) UpdateProfile(ctx context.Context, userID int64, p ProfilePatch) (
 		}
 	}
 	var newEmail string
-	u, err := a.users.Modify(ctx, userID, func(cur store.User, _ int) (store.UserFields, error) {
+	u, changed, err := a.users.Modify(ctx, userID, func(cur store.User, _ int) (store.UserFields, error) {
 		if setPW && cur.PasswordHash != checked {
 			return store.UserFields{}, InvalidField("currentPassword", wrongCurrent)
 		}
@@ -231,7 +234,9 @@ func (a *App) UpdateProfile(ctx context.Context, userID int64, p ProfilePatch) (
 	if err != nil {
 		return User{}, StoreError(err, userNotFound(userID), emailTaken(newEmail))
 	}
-	a.entityChanged(ctx, UserActor(userID), logx.EntityUser, u.ID, logx.ActionUpdate)
+	if changed {
+		a.entityChanged(ctx, UserActor(userID), logx.EntityUser, u.ID, logx.ActionUpdate)
+	}
 	return UserFromStore(u), nil
 }
 

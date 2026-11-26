@@ -30,14 +30,23 @@ func TestConditionBuilder(t *testing.T) {
 	body := serve(h, "GET", u+"/condition", c, true).Body.String()
 	wantContains(t, "empty builder", body,
 		`id="modal-title">Edit Client Conditions: Phone</h2>`,
-		`<form class="form" method="post" action="`+u+`/condition" hx-post="`+u+`/condition" hx-target="#modal-body" data-persistent>`,
+		`<form class="form" method="post" action="`+u+`/condition" hx-post="`+u+`/condition" hx-target="#modal-body" hx-sync="this:drop" data-persistent x-data="unsavedGuard">`,
 		`<button type="submit" class="button" hidden tabindex="-1" aria-hidden="true">Save</button>`,
 		`<input type="hidden" name="n.0.kind" value="group"><input type="hidden" name="n.0.op" value="and">`,
-		`aria-pressed="false" title="Negate this group" name="edit" value="not:n.0" formaction="`+u+`/condition/edit" formnovalidate hx-post="`+u+`/condition/edit" hx-target="#modal-body">NOT</button>`,
+		`aria-pressed="false" title="Negate this group" name="edit" value="not:n.0" formaction="`+u+`/condition/edit" formnovalidate hx-post="`+u+`/condition/edit" hx-target="#modal-body" hx-sync="closest form:drop">NOT</button>`,
 		`<summary class="menu__button">Add Expression</summary>`,
 		`name="edit" value="add-headerRegex:n.0"`, `>Header Regex</button>`)
 	if strings.Contains(body, "condition-group__remove") {
 		t.Error("the top-level group can be removed")
+	}
+	// The stored tree: closing does not ask.
+	if strings.Contains(body, "data-unsaved") {
+		t.Error("the stored condition is marked unsaved")
+	}
+	// Every edit button drops its click while a request of the form is in flight, so
+	// a quick second edit cannot undo the first.
+	if edits, synced := strings.Count(body, `name="edit"`), strings.Count(body, `hx-sync="closest form:drop"`); edits == 0 || edits != synced {
+		t.Errorf("%d edit buttons, %d with hx-sync", edits, synced)
 	}
 	assertNoEval(t, body)
 
@@ -53,6 +62,8 @@ func TestConditionBuilder(t *testing.T) {
 	if rec.Code != 200 || rec.Header().Get("HX-Trigger") != "" {
 		t.Errorf("edit: %d %v", rec.Code, rec.Header())
 	}
+	// An edited tree is not what is stored: closing asks.
+	wantContains(t, "edited is unsaved", rec.Body.String(), `x-data="unsavedGuard" data-unsaved>`)
 	form.Set("edit", "not:n.0.0")
 	wantContains(t, "NOT on an item", send(h, "POST", u+"/condition/edit", form, c, true).Body.String(),
 		`<button type="submit" class="condition-item__operator" aria-pressed="true" title="Negate this expression" name="edit" value="not:n.0.0"`, `>Not Equals</button>`)
@@ -74,7 +85,7 @@ func TestConditionBuilder(t *testing.T) {
 	wantContains(t, "invalid", rec.Body.String(),
 		`<p class="condition-item__error" id="n.0.0.value-message">IP address: must be an IPv4 or IPv6 address</p>`,
 		`<p class="condition-item__error" id="n.0.1.0.header-message">Header name: must be 1–255 characters</p>`,
-		`value="10.0.0"`)
+		`value="10.0.0"`, `data-unsaved>`)
 	if rec.Code != 422 || triggers(t, rec)["toast"]["title"] != "The condition was not saved" {
 		t.Errorf("invalid save: %d %v", rec.Code, rec.Header())
 	}

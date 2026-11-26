@@ -1242,7 +1242,9 @@ Every bullet is an acceptance item for its iteration.
 - C7 Condition builder (§10.5).
 - Found in I08: "Conditions" opens the builder in its own modal ("Edit Client Conditions:
   **x**"), so the edit modal (C4) is the name and Delete again. The builder does not close on a
-  backdrop click (its edits are unsaved). Save closes it with the toast "Condition of **x**
+  backdrop click (its edits are unsaved), and after an edit or a failed save Close and Escape
+  ask "You will lose unsaved changes…" as the scenario editor does (the `unsavedGuard`
+  component in `app.js`, which the scenario editor also uses). Save closes it with the toast "Condition of **x**
   saved" and refreshes the table; problems are shown under the expression they are about
   (`IP address: must be an IPv4 or IPv6 address`). Emptying the condition of an enabled client
   is refused with "This client is enabled, and an enabled client needs a condition. Add an
@@ -1297,7 +1299,8 @@ Every bullet is an acceptance item for its iteration.
 - Found in I08: the table's last column has Edit and Delete as text buttons. The edit modal
   carries the values it was opened with (hidden `orig.*` inputs), and only fields that differ
   from them are sent, so it does not set back a change made meanwhile; a blank new password
-  keeps the password. A refused delete is `422` with `HX-Reswap: none` and the toast "The user
+  keeps the password. A save that changes nothing (also on My Account) writes nothing and logs
+  no `update` event, but answers as a save. A refused delete is `422` with `HX-Reswap: none` and the toast "The user
   was not deleted". Demoting the last admin shows the message under the Admin switch.
 
 **My Account** (`/my-account`)
@@ -1335,6 +1338,12 @@ error inline if the JSON is invalid. There is no syntax highlighting.
     `add-header`, `add-headerRegex`, `remove`, `not` and `and-or`. Every builder button is a
     submit button with that value and a `formaction`, so the builder also works without
     JavaScript; a hidden first submit button makes Enter in a text field mean Save.
+  - Every edit starts from the tree in the form, so two edits in flight at once would start
+    from the same tree and the second answer would undo the first (a double-click on NOT
+    left it on). The form and its buttons carry `hx-sync` (`this:drop`, `closest form:drop`):
+    while one of the form's requests is in flight, further clicks are dropped, so a
+    double-click is one edit. Queueing would not help: the queued request would send the old
+    form.
   - Inputs per node: `<path>.kind` (`group`, `ip`, `cidr`, `header`, `headerRegex`),
     `<path>.not=on`, `<path>.op` (`and`/`or`, groups), `<path>.header` and `<path>.value`
     (items). Child indexes need not be contiguous; a posted tree is limited to 500 nodes and
@@ -1989,7 +1998,7 @@ Update this table as issues are created and closed.
 | I05 | Services | #45 | In review | path `.`/`..` rejected; modal saves answer with the list via `HX-Retarget`; `tmock.service` on the entity event; table, link button, modal content/footer components |
 | I06 | Scenarios | #47 | In review | empty values unset, headers checked as HTTP tokens; `app.Error.Field` puts conflicts next to their field; `confirm:ask` for the unsaved-changes guard; switches toggle fields with CSS `:has`; select, switch, toggle field, form section, collapsible, popover, header rows and code textarea components; a test that every component has an `app.css` section |
 | I07 | Clients, assignments, tokens | #49 | In review | `internal/condition` (model, parse, validate, empty rule; evaluation in I10); tokens are SHA-256 only; `tmock.client`, `tmock.client.id`, `tmock.clients.disabled`; the table reloads on `clients:changed`; Regenerate asks; chip, chip list, icon button, button group and copy field components; `dbtest` caps parallel DB tests per package |
-| I08 | Condition builder, accounts (M1) | | In review | `internal/condition/builder` (form ↔ tree ↔ condition; `edit=<op>:<path>` buttons that also work without JavaScript); user use cases with the admin rules under a table lock; Accounts and My Account; placeholder pages removed; the modal Close button works inside forms with their own Alpine component; hidden input, menu, inline error, condition group and item components |
+| I08 | Condition builder, accounts (M1) | | In review | `internal/condition/builder` (form ↔ tree ↔ condition; `edit=<op>:<path>` buttons that also work without JavaScript); user use cases with the admin rules under a table lock; Accounts and My Account; placeholder pages removed; the modal Close button works inside forms with their own Alpine component; builder edits are `hx-sync` drop, so a quick second edit cannot undo the first; the unsaved-changes guard is shared (`unsavedGuard`) and covers the builder; saves that change no user field are not written or logged; after a failed rename the client's Delete confirmation names the client as stored; hidden input, menu, inline error, condition group and item components |
 | I09 | Proxy core and catalog cache | | Planned | |
 | I10 | Matching and mocking | | Planned | |
 | I11 | Request-condition expressions | | Planned | |

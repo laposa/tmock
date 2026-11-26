@@ -21,21 +21,34 @@ type ConditionBuilderProps struct {
 	// node itself, or by path and input ("n.0.1.value").
 	Errors map[string]string
 	Error  string // a problem with the whole condition, such as the enable rule
+	// Unsaved marks a tree that is not what is stored (after an edit or a failed save),
+	// so the builder asks before it closes.
+	Unsaved bool
 }
 
 // ConditionBuilder is the condition builder modal (spec §10.3 C7, §10.5). Every edit
 // (add, remove, NOT, AND↔OR) posts the whole form to ConditionEditURL and gets the
 // builder back; Save posts it to ConditionURL. The edit buttons are submit buttons
 // with a formaction, so the builder also works without JavaScript.
+//
+// Each edit starts from the tree in the form, so two edits in flight at once would both
+// start from the same tree and the second answer would undo the first: while a request of
+// the form is in flight, further edits and saves are dropped (hx-sync). The Alpine
+// component "unsavedGuard" in app.js asks before the builder closes with unsaved changes.
 func ConditionBuilder(p ConditionBuilderProps) g.Node {
 	b := conditionBuilder{p: p}
 	save := ConditionURL(p.ClientID)
+	formAttrs := []g.Node{hx.Post(save), hx.Target("#" + components.ModalBodyID), hx.Sync("this:drop"),
+		g.Attr("data-persistent"), g.Attr("x-data", "unsavedGuard")}
+	if p.Unsaved {
+		formAttrs = append(formAttrs, g.Attr("data-unsaved"))
+	}
 	return components.ModalContent(components.ModalContentProps{
 		Title: "Edit Client Conditions: " + p.ClientName,
 		Body: []g.Node{components.Form(components.FormProps{
 			Action: save,
 			Error:  p.Error,
-			Attrs:  []g.Node{hx.Post(save), hx.Target("#" + components.ModalBodyID), g.Attr("data-persistent")},
+			Attrs:  formAttrs,
 			Fields: []g.Node{
 				// Enter in a text input submits with the form's first submit button: make
 				// that Save, not the first NOT chip.
@@ -63,7 +76,7 @@ func (b conditionBuilder) edit(e builder.Edit) []g.Node {
 	return []g.Node{
 		g.Attr("name", EditParam), g.Attr("value", e.String()),
 		g.Attr("formaction", url), g.Attr("formnovalidate"),
-		hx.Post(url), hx.Target("#" + components.ModalBodyID),
+		hx.Post(url), hx.Target("#" + components.ModalBodyID), hx.Sync("closest form:drop"),
 	}
 }
 

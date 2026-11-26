@@ -89,6 +89,13 @@ func (u *ui) updateClient(w http.ResponseWriter, r *http.Request, user app.User)
 	p := pages.ClientFormProps{ID: id, Name: r.PostForm.Get("name")}
 	c, err := u.app.UpdateClient(r.Context(), app.UserActor(user.ID), id, app.ClientPatch{Name: httpx.Some(p.Name)})
 	if err != nil {
+		// The form shows the typed name; Delete names the client as stored.
+		stored, getErr := u.app.GetClient(r.Context(), id)
+		if getErr != nil {
+			u.fail(w, r, getErr)
+			return
+		}
+		p.StoredName = stored.Name
 		u.clientFormError(w, r, user, p, err)
 		return
 	}
@@ -390,7 +397,7 @@ func (u *ui) editCondition(w http.ResponseWriter, r *http.Request, user app.User
 		u.fail(w, r, app.BadRequest("The condition could not be changed"))
 		return
 	}
-	u.renderBuilder(w, r, user, http.StatusOK, pages.ConditionBuilderProps{ClientID: c.ID, ClientName: c.Name, Tree: tree})
+	u.renderBuilder(w, r, user, http.StatusOK, pages.ConditionBuilderProps{ClientID: c.ID, ClientName: c.Name, Tree: tree, Unsaved: true})
 }
 
 // saveCondition is the builder's Save: the posted tree becomes the client's condition
@@ -411,7 +418,7 @@ func (u *ui) saveCondition(w http.ResponseWriter, r *http.Request, user app.User
 	case err == nil:
 		u.clientsChanged(w, r, http.StatusOK, toastSuccess, `Condition of "`+saved.Name+`" saved`, "", true)
 	case errors.As(err, &appErr) && appErr.Kind == app.KindInvalid:
-		p := pages.ConditionBuilderProps{ClientID: c.ID, ClientName: c.Name, Tree: tree, Errors: map[string]string{}}
+		p := pages.ConditionBuilderProps{ClientID: c.ID, ClientName: c.Name, Tree: tree, Errors: map[string]string{}, Unsaved: true}
 		for k, msg := range appErr.Details {
 			switch {
 			case k == "enabled": // msg is app.NeedsConditionMessage
