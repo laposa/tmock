@@ -45,12 +45,13 @@ type Options struct {
 func main() {
 	addr := flag.String("addr", "localhost:8081", "listen address")
 	var opts Options
-	flag.IntVar(&opts.Status, "status", http.StatusOK, "response status code")
+	flag.IntVar(&opts.Status, "status", http.StatusOK, "response status code (200–599)")
 	flag.DurationVar(&opts.Delay, "delay", 0, "delay before each response, e.g. 500ms")
 	flag.BoolVar(&opts.Gzip, "gzip", false, "gzip-compress responses for clients that send Accept-Encoding: gzip")
 	flag.Parse()
-	if opts.Status < 100 || opts.Status > 599 {
-		fmt.Fprintln(os.Stderr, "echo-upstream: -status must be 100–599")
+	// A 1xx status is informational (Go sends a 200 after it), so it cannot carry the echo.
+	if opts.Status < 200 || opts.Status > 599 {
+		fmt.Fprintln(os.Stderr, "echo-upstream: -status must be 200–599")
 		os.Exit(2)
 	}
 
@@ -97,6 +98,10 @@ func Handler(opts Options, logw io.Writer) http.Handler {
 
 		out, _ := json.MarshalIndent(e, "", "  ") // cannot fail for these types
 		out = append(out, '\n')
+		if !bodyAllowed(opts.Status) {
+			w.WriteHeader(opts.Status) // 204 and 304 have no body
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		if opts.Gzip && acceptsGzip(r) {
 			w.Header().Set("Content-Encoding", "gzip")
@@ -110,6 +115,11 @@ func Handler(opts Options, logw io.Writer) http.Handler {
 		w.WriteHeader(opts.Status)
 		_, _ = w.Write(out)
 	})
+}
+
+// bodyAllowed reports whether a response with status may have a body.
+func bodyAllowed(status int) bool {
+	return status != http.StatusNoContent && status != http.StatusNotModified
 }
 
 // acceptsGzip reports whether the request's Accept-Encoding lists gzip.

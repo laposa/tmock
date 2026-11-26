@@ -160,18 +160,17 @@ func TestCacheInvalidate(t *testing.T) {
 	})
 }
 
-// Only one rebuild runs at a time; requests meanwhile use the previous snapshot. An
-// invalidation during the rebuild makes even the new snapshot stale, since its data may
-// have been read before the change.
+// Only one rebuild runs at a time. While a snapshot that is only past its TTL is
+// rebuilt, other requests use it instead of waiting.
 func TestCacheSingleFlight(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		l := &fakeLoader{data: sampleData()}
-		c := NewCache(l, Options{TTL: time.Hour, Logger: slog.New(slog.DiscardHandler)})
+		c := NewCache(l, Options{TTL: time.Minute, Logger: slog.New(slog.DiscardHandler)})
 		services(t, c)
 
 		l.gate = make(chan struct{})
 		l.set(store.CatalogData{}, nil)
-		c.Invalidate()
+		time.Sleep(time.Minute)
 		done := make(chan int)
 		go func() { done <- services(t, c) }() // starts the rebuild and waits in Load
 		synctest.Wait()
@@ -184,16 +183,92 @@ func TestCacheSingleFlight(t *testing.T) {
 		if n := l.loads.Load(); n != 2 {
 			t.Fatalf("loads = %d, want 2 (one rebuild)", n)
 		}
-		c.Invalidate() // a change while the rebuild is in flight
 		l.gate <- struct{}{}
 		if n := <-done; n != 0 {
 			t.Fatalf("rebuilding request got %d services", n)
 		}
+	})
+}
 
-		go func() { l.gate <- struct{}{} }()
+// After Invalidate, a request never gets the invalidated snapshot, even while a rebuild
+// that started before the change is running: it waits, and since that rebuild may have
+// read the data before the change, a second rebuild follows.
+func TestCacheInvalidateDuringRebuild(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := &fakeLoader{data: sampleData()}
+		c := NewCache(l, Options{TTL: time.Minute, Logger: slog.New(slog.DiscardHandler)})
 		services(t, c)
+
+		l.gate = make(chan struct{})
+		time.Sleep(time.Minute)
+		first := make(chan int)
+		go func() { first <- services(t, c) }() // TTL rebuild, reads the old data
+		synctest.Wait()
+
+		l.set(store.CatalogData{}, nil) // the change, committed during that rebuild
+		c.Invalidate()
+		second := make(chan int)
+		go func() { second <- services(t, c) }()
+		synctest.Wait()
+		select {
+		case n := <-second:
+			t.Fatalf("request after the change got the invalidated snapshot (%d services)", n)
+		default:
+		}
+
+		l.gate <- struct{}{} // the first rebuild finishes; its snapshot is stale already
+		<-first
+		l.gate <- struct{}{} // the second rebuild reads the new data
+		if n := <-second; n != 0 {
+			t.Fatalf("request after the change got %d services, want 0", n)
+		}
 		if n := l.loads.Load(); n != 3 {
-			t.Fatalf("loads = %d, want 3: the snapshot built during the change must be stale", n)
+			t.Fatalf("loads = %d, want 3", n)
+		}
+	})
+}
+
+// A request waiting for a rebuild gives up when its context ends.
+func TestCacheWaitHonoursContext(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := &fakeLoader{data: sampleData(), gate: make(chan struct{})}
+		c := NewCache(l, Options{TTL: time.Minute, Logger: slog.New(slog.DiscardHandler)})
+		go func() { _, _ = c.Get(context.Background()) }()
+		synctest.Wait()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if _, err := c.Get(ctx); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("err = %v, want the context's", err)
+		}
+		l.gate <- struct{}{}
+	})
+}
+
+// With no snapshot to fall back on, requests queued behind a failing rebuild get its error
+// instead of each running a rebuild of their own.
+func TestCacheFailureWithoutSnapshot(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := &fakeLoader{err: errors.New("db down"), gate: make(chan struct{})}
+		c := NewCache(l, Options{TTL: time.Minute, Logger: slog.New(slog.DiscardHandler)})
+		errs := make(chan error, 3)
+		for range 3 {
+			go func() { _, err := c.Get(context.Background()); errs <- err }()
+		}
+		synctest.Wait()
+		l.gate <- struct{}{}
+		for range 3 {
+			if err := <-errs; err == nil {
+				t.Fatal("no error")
+			}
+		}
+		if n := l.loads.Load(); n != 1 {
+			t.Fatalf("loads = %d, want 1", n)
+		}
+		time.Sleep(retryAfterFailure)
+		go func() { l.gate <- struct{}{} }()
+		if _, err := c.Get(context.Background()); err == nil || l.loads.Load() != 2 {
+			t.Fatalf("not retried after the pause: %v, loads %d", err, l.loads.Load())
 		}
 	})
 }
@@ -237,6 +312,7 @@ func TestCacheRebuildFailure(t *testing.T) {
 		}
 
 		l.set(sampleData(), nil)
+		time.Sleep(retryAfterFailure) // not retried before that
 		if services(t, c) != 2 {
 			t.Fatal("no recovery")
 		}

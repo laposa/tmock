@@ -22,7 +22,7 @@ import (
 //	<ip> <METHOD> <url> <status> <ms>ms <size>
 //
 // Header values and bodies are never logged (spec §2.4.3).
-func (p *Proxy) logRequest(r *http.Request, rec *recorder, ex *exchange, d time.Duration) {
+func (p *Proxy) logRequest(r *http.Request, status int, size int64, ex *exchange, d time.Duration) {
 	ctx := r.Context()
 	if ex.failure != nil {
 		p.logUpstreamFailed(ctx, ex)
@@ -31,7 +31,6 @@ func (p *Proxy) logRequest(r *http.Request, rec *recorder, ex *exchange, d time.
 		return
 	}
 	ip := clientip.From(r)
-	status := rec.status()
 	ms := d.Milliseconds()
 	attrs := []slog.Attr{
 		slog.String(logx.AttrEventName, logx.EventProxyRequest),
@@ -40,7 +39,7 @@ func (p *Proxy) logRequest(r *http.Request, rec *recorder, ex *exchange, d time.
 		slog.Int(logx.AttrHTTPStatusCode, status),
 		slog.String(logx.AttrClientAddress, ip),
 		slog.Int64(logx.AttrDurationMS, ms),
-		slog.Int64(logx.AttrHTTPBodySize, rec.size),
+		slog.Int64(logx.AttrHTTPBodySize, size),
 	}
 	if r.URL.RawQuery != "" {
 		attrs = append(attrs, slog.String(logx.AttrURLQuery, r.URL.RawQuery))
@@ -51,7 +50,7 @@ func (p *Proxy) logRequest(r *http.Request, rec *recorder, ex *exchange, d time.
 			slog.String(logx.AttrServerAddress, ex.service.Upstream.Hostname()),
 		)
 	}
-	msg := fmt.Sprintf("%s %s %s %d %dms %s", ip, r.Method, r.URL.RequestURI(), status, ms, FormatSize(rec.size))
+	msg := fmt.Sprintf("%s %s %s %d %dms %s", ip, r.Method, r.URL.RequestURI(), status, ms, FormatSize(size))
 	p.logger.LogAttrs(ctx, slog.LevelInfo, msg, attrs...)
 }
 

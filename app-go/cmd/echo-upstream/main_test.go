@@ -77,3 +77,11 @@ func TestDelay(t *testing.T) {
 		}
 	})
 }
+
+func TestNoBodyStatus(t *testing.T) {
+	rec := httptest.NewRecorder()
+	Handler(Options{Status: 204}, nil).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if rec.Code != 204 || rec.Body.Len() != 0 {
+		t.Errorf("got %d with %d bytes", rec.Code, rec.Body.Len())
+	}
+}

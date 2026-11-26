@@ -41,8 +41,10 @@ type Cache struct {
 	// rather than a sync.Mutex: a goroutine waiting on a channel counts as blocked for
 	// testing/synctest, one waiting on a mutex does not.
 	rebuild chan struct{}
-	// failedAt is when the last rebuild failed (zero after a success). Guarded by rebuild.
+	// failedAt is when the last rebuild failed (zero after a success), and failure its
+	// error. Guarded by rebuild.
 	failedAt time.Time
+	failure  error
 }
 
 type entry struct {
@@ -67,10 +69,18 @@ func NewCache(loader Loader, opts Options) *Cache {
 func (c *Cache) Invalidate() { c.gen.Add(1) }
 
 // Get returns a snapshot that is fresh (younger than the TTL and built after the latest
-// Invalidate), rebuilding it if needed. While another request is rebuilding, Get returns
-// the previous snapshot instead of waiting, unless there is none yet. If a rebuild fails,
-// the previous snapshot is returned (the failure is logged); the error is returned only
-// when there is no snapshot at all.
+// Invalidate), rebuilding it if needed.
+//
+// While another request is rebuilding, Get returns the previous snapshot instead of
+// waiting, but only if that snapshot is merely past its TTL. An invalidated snapshot is
+// never served that way, so a change is visible on the next request: Get waits for the
+// rebuild (or until ctx is done) and, if that rebuild read its data before the change,
+// rebuilds again.
+//
+// If a rebuild fails, the failure is logged and the previous snapshot is returned; the
+// error is returned only when there is no snapshot at all. After a failure, rebuilding is
+// not retried for retryAfterFailure, so requests queued behind a failing rebuild do not
+// each try again.
 func (c *Cache) Get(ctx context.Context) (*Snapshot, error) {
 	if c.opts.Disabled {
 		return c.build(ctx)
@@ -82,30 +92,37 @@ func (c *Cache) Get(ctx context.Context) (*Snapshot, error) {
 	select {
 	case c.rebuild <- struct{}{}:
 	default:
-		if e != nil {
-			return e.snap, nil // a rebuild is running: use the previous snapshot meanwhile
+		if e != nil && e.gen == c.gen.Load() {
+			return e.snap, nil // only past its TTL: use it while the rebuild runs
 		}
-		c.rebuild <- struct{}{} // nothing to serve yet: wait for the first snapshot
+		select { // no snapshot yet, or an invalidated one: wait for the rebuild
+		case c.rebuild <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	defer func() { <-c.rebuild }()
 
-	// Another request may have rebuilt it while this one waited for the lock.
+	// Another request may have rebuilt it while this one waited.
 	if e = c.cur.Load(); c.fresh(e) {
 		return e.snap, nil
 	}
-	if e != nil && !c.failedAt.IsZero() && time.Since(c.failedAt) < retryAfterFailure {
-		return e.snap, nil
+	if !c.failedAt.IsZero() && time.Since(c.failedAt) < retryAfterFailure {
+		if e != nil {
+			return e.snap, nil
+		}
+		return nil, c.failure
 	}
 	gen := c.gen.Load()
 	snap, err := c.build(ctx)
 	if err != nil {
-		c.failedAt = time.Now()
+		c.failedAt, c.failure = time.Now(), err
 		if e != nil {
 			return e.snap, nil
 		}
 		return nil, err
 	}
-	c.failedAt = time.Time{}
+	c.failedAt, c.failure = time.Time{}, nil
 	c.cur.Store(&entry{snap: snap, gen: gen, built: time.Now()})
 	return snap, nil
 }

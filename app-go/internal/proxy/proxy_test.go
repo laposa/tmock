@@ -449,3 +449,61 @@ func TestEchoShape(t *testing.T) {
 		t.Errorf("body = %s", rec.Body)
 	}
 }
+
+// x-tmock-client and x-tmock-scenario are only ever set by tmock: copies sent by the
+// client or by the upstream are dropped (spec §7.7, §7.8).
+func TestForeignTmockHeadersDropped(t *testing.T) {
+	var got http.Header
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+		w.Header().Set(HeaderClient, "from-upstream")
+		w.Header().Set(HeaderScenario, "from-upstream")
+		w.Header().Set(HeaderStatus, StatusMocked)
+	}))
+	defer up.Close()
+	p := New(Options{Catalog: services("svc", up.URL), Logger: slog.New(slog.DiscardHandler)})
+	rec := do(p, "GET", "/api/proxy/svc/", nil, HeaderClient, "spoofed", HeaderScenario, "spoofed", HeaderStatus, StatusMocked)
+	for name, h := range map[string]http.Header{"upstream request": got, "response": rec.Header()} {
+		if h.Get(HeaderClient) != "" || h.Get(HeaderScenario) != "" || h.Get(HeaderStatus) != StatusProxied {
+			t.Errorf("%s: x-tmock headers %q %q %q", name, h.Get(HeaderClient), h.Get(HeaderScenario), h.Get(HeaderStatus))
+		}
+	}
+}
+
+// Requests the proxy's mux answers itself (the redirect to a clean path) are logged too.
+func TestRedirectIsLogged(t *testing.T) {
+	logs, logger := logxtest.New()
+	p := New(Options{Catalog: services("svc", "http://upstream.invalid"), Logger: logger})
+	rec := do(p, "GET", "/api/proxy/svc//x", nil)
+	// 307, so a redirected POST keeps its method and body.
+	if rec.Code != http.StatusTemporaryRedirect || rec.Header().Get("Location") != "/api/proxy/svc/x" {
+		t.Fatalf("status %d, Location %q", rec.Code, rec.Header().Get("Location"))
+	}
+	ev := logs.Events(logx.EventProxyRequest)
+	if len(ev) != 1 || ev[0].Attrs[logx.AttrHTTPStatusCode] != "307" {
+		t.Errorf("events: %+v", logs.All())
+	}
+}
+
+type panickingCatalog struct{}
+
+func (panickingCatalog) Get(context.Context) (*catalog.Snapshot, error) { panic("kaboom") }
+
+// A panic is logged with the 500 that the panic recovery outside the proxy will send,
+// and passed on to that recovery.
+func TestPanicLoggedAs500(t *testing.T) {
+	logs, logger := logxtest.New()
+	p := New(Options{Catalog: panickingCatalog{}, Logger: logger})
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("the panic was swallowed")
+			}
+		}()
+		do(p, "GET", "/api/proxy/svc/", nil)
+	}()
+	ev := logs.Events(logx.EventProxyRequest)
+	if len(ev) != 1 || ev[0].Attrs[logx.AttrHTTPStatusCode] != "500" {
+		t.Errorf("events: %+v", logs.All())
+	}
+}

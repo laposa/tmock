@@ -108,7 +108,30 @@ func newTransport(timeout time.Duration) *http.Transport {
 	return t
 }
 
-func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) { p.mux.ServeHTTP(w, r) }
+// ServeHTTP logs every proxy request (spec §7.9), including the ones the mux answers
+// itself, such as the redirect to a clean path.
+func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	rec := &recorder{ResponseWriter: w}
+	ex := &exchange{}
+	r = r.WithContext(context.WithValue(r.Context(), exchangeKey{}, ex))
+	defer func() {
+		status := rec.status()
+		v := recover()
+		if v != nil && v != http.ErrAbortHandler && rec.code == 0 {
+			// httpx.Recover, outside the proxy, answers 500 for a panic before the
+			// response started.
+			status = http.StatusInternalServerError
+		}
+		// Also when ReverseProxy aborts a response whose body could not be copied (it
+		// panics with http.ErrAbortHandler).
+		p.logRequest(r, status, rec.size, ex, time.Since(start))
+		if v != nil {
+			panic(v)
+		}
+	}()
+	p.mux.ServeHTTP(rec, r)
+}
 
 // exchange is the request-scoped state of one proxy request. The snapshot it points into
 // is shared and must not be modified.
@@ -126,27 +149,21 @@ func exchangeFrom(r *http.Request) *exchange {
 }
 
 func (p *Proxy) serve(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	rec := &recorder{ResponseWriter: w}
-	ex := &exchange{}
-	// Deferred, so the request is logged even when ReverseProxy aborts a response whose
-	// body could not be copied (it panics with http.ErrAbortHandler).
-	defer func() { p.logRequest(r, rec, ex, time.Since(start)) }()
-
 	snap, err := p.opts.Catalog.Get(r.Context())
 	if err != nil {
 		// Logged by the catalog as tmock.catalog.rebuild_failed.
-		plain(rec, http.StatusInternalServerError, "Internal Server Error")
+		plain(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
 	svc, ok := snap.Service(r.PathValue("service"))
 	if !ok {
-		plain(rec, http.StatusNotFound, "Service not found")
+		plain(w, http.StatusNotFound, "Service not found")
 		return
 	}
+	ex := exchangeFrom(r)
 	ex.service = svc
 	ex.rest = restOf(r)
-	p.rp.ServeHTTP(rec, r.WithContext(context.WithValue(r.Context(), exchangeKey{}, ex)))
+	p.rp.ServeHTTP(w, r)
 }
 
 // restOf returns the part of the escaped request path after /api/proxy/{service}/,
@@ -190,7 +207,19 @@ func (p *Proxy) rewrite(pr *httputil.ProxyRequest) {
 	if p.opts.APIKey != "" {
 		h.Set("Apikey", p.opts.APIKey)
 	}
-	h.Set(HeaderStatus, StatusProxied)
+	setTmockHeaders(h, StatusProxied)
+}
+
+// setTmockHeaders sets x-tmock-status and removes any other x-tmock-* header, so that
+// x-tmock-client and x-tmock-scenario are only ever the ones tmock sets (spec §7.7,
+// §7.8), never copies of what the client or the upstream sent.
+func setTmockHeaders(h http.Header, status string) {
+	for k := range h {
+		if strings.HasPrefix(k, "X-Tmock-") {
+			delete(h, k)
+		}
+	}
+	h.Set(HeaderStatus, status)
 }
 
 // joinPath appends rest to the upstream's base path: http://h/base + content →
@@ -219,7 +248,7 @@ func joinQuery(base, req string) string {
 // modifyResponse marks a passed-through response (spec §7.8, no scenario). Status,
 // headers and body are otherwise untouched, and the body is streamed.
 func (p *Proxy) modifyResponse(resp *http.Response) error {
-	resp.Header.Set(HeaderStatus, StatusProxied)
+	setTmockHeaders(resp.Header, StatusProxied)
 	return nil
 }
 
@@ -249,7 +278,7 @@ type recorder struct {
 }
 
 func (r *recorder) WriteHeader(code int) {
-	if r.code == 0 && code >= 200 {
+	if r.code == 0 && (code >= 200 || code == http.StatusSwitchingProtocols) {
 		r.code = code
 	}
 	r.ResponseWriter.WriteHeader(code)

@@ -851,7 +851,8 @@ Feature reference: `api/src/proxy/proxy.service.ts` and `api/src/common/utils/he
 - The proxy needs no session and no CSRF check. Proxy CORS applies (§9.5); security headers do not.
 - Found in I09: `/api/proxy/` without a service name is the same `404 "Service not found"`.
   The proxy routes with a `ServeMux` of its own, so a path that is not clean
-  (`/api/proxy/svc/../x`, `a//b`) is redirected to its clean form, as everywhere else. Proxy
+  (`/api/proxy/svc/../x`, `a//b`) is redirected to its clean form with a `307`, as everywhere
+  else; that redirect is logged as a proxy request too. Proxy
   requests skip the request-log middleware (§9.6) but still get the trace context (§2.4.4) and
   panic recovery (`logx.Traced`, `httpx.Recover`).
 
@@ -882,10 +883,14 @@ Feature reference: `api/src/proxy/proxy.service.ts` and `api/src/common/utils/he
     invalidating (user changes do not invalidate). `disable-all` invalidates too.
   - Invalidations are counted. A snapshot whose data was read before the latest invalidation
     is stale even if its rebuild finished after it, so a change made during a rebuild is not
-    lost. Only the very first requests, with no snapshot to fall back on, wait for a rebuild.
-  - A failed rebuild keeps the old snapshot and is retried at most once a second (so a
-    database outage is not one error per request); with no snapshot at all the proxy answers
-    `500 text/plain`. A rebuild does not use the request's cancellation (a client that goes
+    lost. "Concurrent requests use the previous snapshot" applies only to a snapshot that is
+    past its TTL: an invalidated one is never served, so a request after a change waits for
+    the rebuild (or until its context ends) and sees the change. Requests with no snapshot
+    to fall back on wait too.
+  - A failed rebuild keeps the old snapshot and is retried at most once a second, so a
+    database outage is not one error per request, and requests queued behind a failing
+    rebuild get its error instead of each rebuilding again. With no snapshot at all the
+    proxy answers `500 text/plain`. A rebuild does not use the request's cancellation (a client that goes
     away does not fail it for the others) and is limited to 10 s.
   - The rebuild lock is a one-slot channel, not a `sync.Mutex`: `testing/synctest` does not
     count a goroutine waiting on a mutex as blocked, so `synctest.Wait` would never return.
@@ -1001,7 +1006,9 @@ contacted:
     the upstream sees the client's encoding preferences and compressed bodies pass as they are.
   - `PROXY_UPSTREAM_TIMEOUT` (default `30s`) already applies, to connecting and to waiting for
     the response headers, not to the whole response, so long streamed bodies are not cut off
-    (I13 revisits the limits). A client that goes away is not an upstream failure: no
+    (I13 revisits the limits).
+  - `x-tmock-*` headers that the client or the upstream sent are dropped, so
+    `x-tmock-client` and `x-tmock-scenario` only ever come from tmock. A client that goes away is not an upstream failure: no
     `tmock.proxy.upstream_failed` is logged. `error.type` is `connection_refused`, `dns`,
     `timeout`, `connection_reset`, or the Go error type.
 
@@ -1036,7 +1043,8 @@ This line is the message of the `tmock.proxy.request` event; the same data is at
 structured attributes (§2.4.2). An upstream failure additionally logs
 `tmock.proxy.upstream_failed` with the error.
 
-Found in I09: the size is the number of body bytes written to the client (as sent, so a
+Found in I09: a panic is logged with the `500` the client gets, an upgrade with its `101`. The
+size is the number of body bytes written to the client (as sent, so a
 compressed body counts compressed), so it is always known; sizes use powers of 1024. A
 request for an unknown service is logged too, without `tmock.service` and `server.address`.
 `server.address` is the upstream's host name without the port.
