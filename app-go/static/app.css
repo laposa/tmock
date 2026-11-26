@@ -43,6 +43,14 @@
   --color-table-border: rgba(255, 255, 255, 0.12);
   --color-table-row-hover: rgba(255, 255, 255, 0.04);
 
+  /* Vuetify v-tooltip */
+  --color-tooltip-bg: rgba(97, 97, 97, 0.92);
+  --color-tooltip-text: #ffffff;
+
+  /* Vuetify v-switch: the thumb and the track while off */
+  --color-switch-thumb: #ffffff;
+  --color-switch-track: rgba(0, 0, 0, 0.38);
+
   /* Vuetify colour palette, as the legacy templates named them */
   --color-primary: #3f51b5;            /* color="indigo" */
   --color-primary-hover: #5c6bc0;      /* indigo lighten-1 */
@@ -84,6 +92,11 @@
   --control-height: 36px;              /* v-btn default */
   --control-height-large: 44px;        /* v-btn size="large" */
   --field-height: 48px;                /* v-text-field density="comfortable" */
+  --switch-width: 36px;                /* v-switch track */
+  --switch-height: 14px;
+  --switch-thumb: 20px;
+  --popover-width: 40rem;
+  --code-min-height: 12rem;
 
   /* Type: legacy base.css */
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
@@ -95,6 +108,8 @@
   --font-size-brand: 2rem;
   --font-size-title: 1.5rem;
   --font-size-card-title: 1.25rem;
+  --font-size-group: 18px;             /* legacy ScenarioList.vue .service */
+  --font-size-code: 0.9rem;
   --line-height: 1.6;
   --button-letter-spacing: 0.0892857143em;
 }
@@ -120,6 +135,8 @@
     --color-disabled-bg: rgba(255, 255, 255, 0.12);
     --color-disabled-text: rgba(255, 255, 255, 0.38);
     --color-error: #cf6679;
+    --color-switch-thumb: #bdbdbd;
+    --color-switch-track: rgba(255, 255, 255, 0.3);
   }
 }
 
@@ -153,6 +170,9 @@ a {
 a:hover { color: var(--color-link-hover); }
 
 code { font-family: var(--font-mono); font-size: 0.95em; }
+
+/* The hidden attribute wins over a component's display (Alpine toggles it with x-bind). */
+[hidden] { display: none !important; }
 
 :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
@@ -545,3 +565,273 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
 }
 
 .link-button:hover { color: var(--color-table-text); }
+
+/* ── select.go ─────────────────────────────────────────────────────────────── */
+
+/* Framed by field.go's .field, and drawn like its input. */
+.select {
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: 1rem;
+  color: var(--color-heading);
+  background: var(--color-surface);
+  border: 1px solid var(--color-field-border);
+  border-radius: var(--radius);
+}
+
+.select:hover { border-color: var(--color-field-border-hover); }
+
+.select:focus { outline: 0; border-color: var(--color-focus); box-shadow: inset 0 0 0 1px var(--color-focus); }
+
+.select[aria-invalid="true"] { border-color: var(--color-text-error); }
+
+/* ── switch.go ─────────────────────────────────────────────────────────────── */
+
+.switch { display: flex; flex-direction: column; gap: var(--space-1); }
+
+.switch__control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-height);
+  cursor: pointer;
+}
+
+/* The checkbox stays in place, invisible, above the track: it keeps the focus ring
+   target and the click area, and works without JavaScript. */
+.switch__input {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: var(--switch-width);
+  height: var(--switch-thumb);
+  margin: 0;
+  transform: translateY(-50%);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switch__track {
+  position: relative;
+  flex: none;
+  width: var(--switch-width);
+  height: var(--switch-height);
+  border-radius: var(--switch-height);
+  background: var(--color-switch-track);
+  transition: background-color 0.2s;
+}
+
+.switch__track::after {
+  content: "";
+  position: absolute;
+  top: calc((var(--switch-height) - var(--switch-thumb)) / 2);
+  left: calc(var(--switch-thumb) / -4);
+  width: var(--switch-thumb);
+  height: var(--switch-thumb);
+  border-radius: 50%;
+  background: var(--color-switch-thumb);
+  box-shadow: var(--shadow-1);
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.switch__input:checked + .switch__track { background: var(--color-primary-hover); }
+
+.switch__input:checked + .switch__track::after {
+  background: var(--color-primary);
+  transform: translateX(calc(var(--switch-width) - var(--switch-thumb) / 2));
+}
+
+.switch__input:focus-visible + .switch__track { outline: 2px solid var(--color-focus); outline-offset: 4px; }
+
+.switch__input:disabled + .switch__track { opacity: 0.5; }
+
+.switch__label--hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.switch__error { font-size: var(--font-size-small); color: var(--color-text-error); }
+
+/* ── togglefield.go ────────────────────────────────────────────────────────── */
+
+/* Legacy ScenarioModal.vue .row: the switch, then the field or, while off, its name. */
+.toggle-field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: var(--space-3);
+  scroll-margin-top: var(--space-3);
+}
+
+.toggle-field__switch { display: flex; align-items: center; min-height: var(--field-height); }
+
+.toggle-field__label {
+  display: flex;
+  align-items: center;
+  min-height: var(--field-height);
+  font-size: 1rem;
+}
+
+.toggle-field__control { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+
+.toggle-field:has(> .toggle-field__switch input:checked) > .toggle-field__label { display: none; }
+
+.toggle-field:has(> .toggle-field__switch input:not(:checked)) > .toggle-field__control { display: none; }
+
+/* ── formsection.go ────────────────────────────────────────────────────────── */
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Legacy ScenarioModal.vue .label */
+.form-section__title { margin-bottom: var(--space-2); padding: 0; font-weight: bold; color: inherit; }
+
+/* ── collapsible.go ────────────────────────────────────────────────────────── */
+
+.collapsible { display: flex; flex-direction: column; }
+
+/* Legacy ScenarioList.vue .service: an open group's name is in the link colour. */
+.collapsible__summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  font-size: var(--font-size-group);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.collapsible__summary:hover { color: var(--color-link-hover); }
+
+.collapsible[open] > .collapsible__summary { color: var(--color-link); }
+
+.collapsible__meta { font-size: var(--font-size-small); font-weight: normal; color: var(--color-text-muted); }
+
+.collapsible__body { padding-bottom: var(--space-3); }
+
+/* ── popover.go ────────────────────────────────────────────────────────────── */
+
+.popover { display: inline-block; }
+
+/* A native popover in the top layer; app.js sets left and top. */
+.popover__panel {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: min(var(--popover-width), calc(100vw - 2 * var(--space-3)));
+  max-height: 50vh;
+  overflow: auto;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-button);
+  color: var(--color-tooltip-text);
+  background: var(--color-tooltip-bg);
+  border: 0;
+  border-radius: var(--radius);
+}
+
+.popover__text { white-space: normal; }
+
+.popover__text--pre { font-family: var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ── headerrows.go ─────────────────────────────────────────────────────────── */
+
+.header-rows { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.header-rows__label { font-size: var(--font-size-small); color: var(--color-text-muted); }
+
+.header-rows__list { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.header-rows__row { display: grid; grid-template-columns: 1fr 2fr auto; gap: var(--space-2); align-items: center; }
+
+.header-rows__input {
+  height: var(--field-height);
+  min-width: 0;
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: 1rem;
+  color: var(--color-heading);
+  background: transparent;
+  border: 1px solid var(--color-field-border);
+  border-radius: var(--radius);
+}
+
+.header-rows__input:hover { border-color: var(--color-field-border-hover); }
+
+.header-rows__input:focus { outline: 0; border-color: var(--color-focus); box-shadow: inset 0 0 0 1px var(--color-focus); }
+
+.header-rows__remove {
+  width: var(--control-height);
+  height: var(--control-height);
+  font: inherit;
+  color: var(--color-danger);
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.header-rows__remove:hover { background: var(--color-border); }
+
+.header-rows__actions { display: flex; }
+
+.header-rows__error { font-size: var(--font-size-small); padding: 0 var(--space-3); color: var(--color-text-error); }
+
+/* ── codetextarea.go ───────────────────────────────────────────────────────── */
+
+/* Framed by field.go's .field. */
+.code-field {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-field-border);
+  border-radius: var(--radius);
+}
+
+.code-field:hover { border-color: var(--color-field-border-hover); }
+
+.code-field:focus-within { border-color: var(--color-focus); box-shadow: inset 0 0 0 1px var(--color-focus); }
+
+.code-field__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.code-field__language { font-size: var(--font-size-small); color: var(--color-text-muted); }
+
+.code-field__input {
+  width: 100%;
+  min-height: var(--code-min-height);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow: auto;
+  resize: vertical;
+  color: var(--color-heading);
+  background: transparent;
+  border: 0;
+}
+
+.code-field__input:focus { outline: 0; }
+
+.code-field__error { padding: var(--space-1) var(--space-3); font-size: var(--font-size-small); color: var(--color-text-error); }

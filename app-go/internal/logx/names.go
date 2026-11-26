@@ -60,7 +60,8 @@ const (
 	AttrEntityID     = "tmock.entity.id"
 	AttrEntityAction = "tmock.entity.action"
 	AttrActor        = "tmock.actor"
-	AttrService      = "tmock.service" // a service's path
+	AttrService      = "tmock.service"  // a service's path
+	AttrScenario     = "tmock.scenario" // a scenario's name
 
 	AttrMigrationVersion = "tmock.migration.version"
 	AttrMigrationName    = "tmock.migration.name"
@@ -75,7 +76,8 @@ const (
 // Values of the tmock.entity.* and tmock.actor attributes of tmock.entity.changed
 // (spec §2.4.2).
 const (
-	EntityService = "service"
+	EntityService  = "service"
+	EntityScenario = "scenario"
 
 	ActionCreate = "create"
 	ActionUpdate = "update"
