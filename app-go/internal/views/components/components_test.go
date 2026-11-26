@@ -298,3 +298,35 @@ func TestCodeTextarea(t *testing.T) {
 			`<textarea class="code-field__input" id="body" name="body" rows="12" spellcheck="false" wrap="off" autocapitalize="off" x-on:keydown.tab="indent">`+"\n"+`</textarea>`+
 			`<p class="code-field__error" role="alert" x-show="formatError" x-text="formatError"></p></div></div>`)
 }
+
+func TestChip(t *testing.T) {
+	check(t, "strong, text and remove", Chip(ChipProps{Strong: "svc", Text: "slow <1>", RemoveLabel: "Remove svc | slow", RemoveAttrs: []g.Node{click}}),
+		`<span class="chip"><span class="chip__text"><strong class="chip__strong">svc</strong> | slow &lt;1&gt;</span>`+
+			`<button type="button" class="chip__remove" aria-label="Remove svc | slow" x-on:click="go">✕</button></span>`)
+	check(t, "text only, not removable", Chip(ChipProps{Text: "plain"}),
+		`<span class="chip"><span class="chip__text">plain</span></span>`)
+}
+
+func TestChipList(t *testing.T) {
+	check(t, "chips then end", ChipList(ChipListProps{Chips: []g.Node{g.Text("[a]"), g.Text("[b]")}, End: g.Text("[add]")}),
+		`<div class="chip-list">[a][b][add]</div>`)
+	check(t, "no chips", ChipList(ChipListProps{End: g.Text("[add]")}), `<div class="chip-list">[add]</div>`)
+}
+
+func TestIconButton(t *testing.T) {
+	check(t, "add", IconButton(IconButtonProps{Label: "Assign", Icon: IconAdd, Attrs: []g.Node{click}}),
+		`<button type="button" class="icon-button" aria-label="Assign" title="Assign" x-on:click="go"><span aria-hidden="true">⊕</span></button>`)
+	check(t, "info", IconButton(IconButtonProps{Label: "<i>", Icon: IconInfo}),
+		`<button type="button" class="icon-button" aria-label="&lt;i&gt;" title="&lt;i&gt;"><span aria-hidden="true">ⓘ</span></button>`)
+}
+
+func TestButtonGroup(t *testing.T) {
+	check(t, "in order", ButtonGroup(g.Text("[a]"), g.Text("[b]")), `<div class="button-group">[a][b]</div>`)
+}
+
+func TestCopyField(t *testing.T) {
+	check(t, "value, copy button, warning", CopyField(CopyFieldProps{Label: "Token", ID: "tok", Value: "tmck_<x>", Copied: "Copied!", Warning: "once"}),
+		`<div class="field"><label class="field__label" for="tok">Token</label><div class="copy-field" x-data="copyField" data-copied="Copied!">`+
+			`<input class="copy-field__input" id="tok" type="text" readonly value="tmck_&lt;x&gt;" spellcheck="false" autocomplete="off" aria-describedby="tok-message" x-on:focus="select">`+
+			`<button type="button" class="button button--primary" x-on:click="copy">Copy</button></div><p class="field__hint" id="tok-message">once</p></div>`)
+}

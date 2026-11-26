@@ -73,8 +73,12 @@ func (a *API) deleteService(w http.ResponseWriter, r *http.Request) {
 	httpx.NoContent(w)
 }
 
-// actor is the logged-in user that a guard put into the request's context.
+// actor is who makes the request, as a guard put it into the request's context: a
+// client through its token (tokenOrUser), or the logged-in user.
 func actor(r *http.Request) app.Actor {
+	if id, ok := r.Context().Value(clientActorKey{}).(int64); ok {
+		return app.ClientTokenActor(id)
+	}
 	u, _ := auth.UserFrom(r.Context())
 	return app.UserActor(u.ID)
 }

@@ -62,6 +62,10 @@ const (
 	AttrActor        = "tmock.actor"
 	AttrService      = "tmock.service"  // a service's path
 	AttrScenario     = "tmock.scenario" // a scenario's name
+	AttrClient       = "tmock.client"   // a client's name
+	AttrClientID     = "tmock.client.id"
+
+	AttrClientsDisabled = "tmock.clients.disabled" // how many clients disable-all disabled
 
 	AttrMigrationVersion = "tmock.migration.version"
 	AttrMigrationName    = "tmock.migration.name"
@@ -78,10 +82,15 @@ const (
 const (
 	EntityService  = "service"
 	EntityScenario = "scenario"
+	EntityClient   = "client"
 
-	ActionCreate = "create"
-	ActionUpdate = "update"
-	ActionDelete = "delete"
+	ActionCreate        = "create"
+	ActionUpdate        = "update"
+	ActionDelete        = "delete"
+	ActionTokenGenerate = "token-generate"
+	ActionTokenRevoke   = "token-revoke"
+	ActionDisableAll    = "disable-all"
 
-	ActorUser = "user"
+	ActorUser        = "user"
+	ActorClientToken = "client-token"
 )

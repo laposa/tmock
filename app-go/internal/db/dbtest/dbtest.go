@@ -20,6 +20,22 @@ import (
 )
 
 // EnvVar holds the DSN of the test database.
+// maxConcurrent caps the DB tests of one package (one test binary) that hold a schema at
+// the same time. go test runs the packages in parallel and each test holds two pools, so
+// without a cap the parallel tests of a dozen packages exceed PostgreSQL's default of 100
+// connections ("sorry, too many clients already", found in I07). With the cap, a package
+// uses at most about 4 × 3 connections.
+const maxConcurrent = 4
+
+var slots = make(chan struct{}, maxConcurrent)
+
+// acquire waits for a slot and gives it back when t ends, after every other cleanup of
+// the test (cleanups run last-registered first), so its connections are closed by then.
+func acquire(t testing.TB) {
+	slots <- struct{}{}
+	t.Cleanup(func() { <-slots })
+}
+
 const EnvVar = "TMOCK_TEST_DATABASE_URL"
 
 // URL returns the test database's DSN, or skips the test if it is not configured.
@@ -37,6 +53,7 @@ func URL(t testing.TB) string {
 func Schema(t testing.TB) string {
 	t.Helper()
 	base := URL(t)
+	acquire(t)
 	u, err := url.Parse(base)
 	if err != nil {
 		t.Fatalf("%s must be a URL: %v", EnvVar, err)

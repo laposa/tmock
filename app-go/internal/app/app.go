@@ -31,6 +31,7 @@ type App struct {
 	users     *store.Users
 	services  *store.Services
 	scenarios *store.Scenarios
+	clients   *store.Clients
 }
 
 // Options configures the use cases. The zero value is ready for production.
@@ -51,6 +52,7 @@ func New(pool *sql.DB, opts Options) *App {
 		users:     store.NewUsers(pool),
 		services:  store.NewServices(pool),
 		scenarios: store.NewScenarios(pool),
+		clients:   store.NewClients(pool),
 	}
 }
 
