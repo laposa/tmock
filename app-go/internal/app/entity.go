@@ -29,9 +29,14 @@ func (a Actor) attrs() []slog.Attr {
 	return []slog.Attr{slog.String(logx.AttrActor, logx.ActorUser), slog.Int64(logx.AttrUserID, a.UserID)}
 }
 
-// entityChanged logs tmock.entity.changed. It is not an audit log: it carries no
-// before/after values.
+// entityChanged is called after every successful change. It logs tmock.entity.changed
+// (not an audit log: it carries no before/after values) and, for anything but a user,
+// invalidates the proxy's catalog (spec §7.2), so that the next proxy request sees the
+// change. Doing both in one place means no mutation can log without invalidating.
 func (a *App) entityChanged(ctx context.Context, actor Actor, entity string, id int64, action string, extra ...slog.Attr) {
+	if entity != logx.EntityUser {
+		a.invalidateCatalog()
+	}
 	attrs := append([]slog.Attr{
 		slog.String(logx.AttrEventName, logx.EventEntityChanged),
 		slog.String(logx.AttrEntityType, entity),
@@ -40,4 +45,12 @@ func (a *App) entityChanged(ctx context.Context, actor Actor, entity string, id 
 	}, actor.attrs()...)
 	attrs = append(attrs, extra...)
 	a.logger.LogAttrs(ctx, slog.LevelInfo, fmt.Sprintf("%s %d: %s", entity, id, action), attrs...)
+}
+
+// invalidateCatalog tells the proxy's catalog that services, scenarios or clients have
+// changed (spec §7.2).
+func (a *App) invalidateCatalog() {
+	if a.catalog != nil {
+		a.catalog.Invalidate()
+	}
 }

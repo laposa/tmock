@@ -849,6 +849,11 @@ Feature reference: `api/src/proxy/proxy.service.ts` and `api/src/common/utils/he
 - `service` is matched exactly (case-sensitive) against `services.path`. If there is no match, the
   response is `404 text/plain "Service not found"`, with no upstream call.
 - The proxy needs no session and no CSRF check. Proxy CORS applies (§9.5); security headers do not.
+- Found in I09: `/api/proxy/` without a service name is the same `404 "Service not found"`.
+  The proxy routes with a `ServeMux` of its own, so a path that is not clean
+  (`/api/proxy/svc/../x`, `a//b`) is redirected to its clean form, as everywhere else. Proxy
+  requests skip the request-log middleware (§9.6) but still get the trace context (§2.4.4) and
+  panic recovery (`logx.Traced`, `httpx.Recover`).
 
 ### 7.2 Catalog (cache)
 
@@ -867,6 +872,23 @@ Feature reference: `api/src/proxy/proxy.service.ts` and `api/src/common/utils/he
   live in request-scoped structs.
 - With several replicas, each one has its own cache. Changes made on one replica reach the others
   within `CACHE_TTL`; set a short TTL (for example `5s`) when running more than one replica.
+- Found in I09:
+  - The data is read by `store.Catalog.Load` in one read-only `REPEATABLE READ` transaction, so
+    a client never points at a scenario the snapshot lacks. A row `internal/app` could not have
+    saved (an upstream URL or a condition that does not parse) is left out with a warning
+    instead of failing the whole catalog.
+  - `internal/app` depends only on an `Invalidator` interface (`app.Options.Catalog`), and the
+    call sits next to the `tmock.entity.changed` event, so no change can log without
+    invalidating (user changes do not invalidate). `disable-all` invalidates too.
+  - Invalidations are counted. A snapshot whose data was read before the latest invalidation
+    is stale even if its rebuild finished after it, so a change made during a rebuild is not
+    lost. Only the very first requests, with no snapshot to fall back on, wait for a rebuild.
+  - A failed rebuild keeps the old snapshot and is retried at most once a second (so a
+    database outage is not one error per request); with no snapshot at all the proxy answers
+    `500 text/plain`. A rebuild does not use the request's cancellation (a client that goes
+    away does not fail it for the others) and is limited to 10 s.
+  - The rebuild lock is a one-slot channel, not a `sync.Mutex`: `testing/synctest` does not
+    count a goroutine waiting on a mutex as blocked, so `synctest.Wait` would never return.
 
 ### 7.3 Client conditions
 
@@ -966,6 +988,22 @@ contacted:
 - **Request body:** forwarded unchanged and streamed. It is buffered (up to 10 MB, otherwise `413`)
   only when a candidate scenario has a `requestCondition` that needs it.
 - **Upstream failure** (connection refused, DNS, timeout): `502 text/plain "Bad Gateway"`, logged.
+- Found in I09:
+  - `ReverseProxy` removes `X-Forwarded-For`, `-Host` and `-Proto` before `Rewrite` runs; the
+    proxy puts back the ones the client sent, so they pass unchanged like any other header
+    (and the four others of `PROXY_REMOVE_FORWARDED_HEADERS` likewise unless removed). Nothing
+    is appended. `Te: trailers` is kept, as `ReverseProxy` does.
+  - The rest of the path is taken from the escaped request path, so `%2F` and other escapes
+    reach the upstream as sent. A base URL with a trailing `/` is joined without doubling it
+    (`http://h/base/` + `x` → `/base/x`; no rest → `/base/`). A query in `upstreamUrl` is kept
+    and the request's query appended with `&`.
+  - The transport adds no `Accept-Encoding` and never decompresses (`DisableCompression`), so
+    the upstream sees the client's encoding preferences and compressed bodies pass as they are.
+  - `PROXY_UPSTREAM_TIMEOUT` (default `30s`) already applies, to connecting and to waiting for
+    the response headers, not to the whole response, so long streamed bodies are not cut off
+    (I13 revisits the limits). A client that goes away is not an upstream failure: no
+    `tmock.proxy.upstream_failed` is logged. `error.type` is `connection_refused`, `dns`,
+    `timeout`, `connection_reset`, or the Go error type.
 
 ### 7.8 Upstream response modification
 
@@ -997,6 +1035,11 @@ human-readable (`0B`, `512B`, `1.5KB`, `2MB`).
 This line is the message of the `tmock.proxy.request` event; the same data is attached as
 structured attributes (§2.4.2). An upstream failure additionally logs
 `tmock.proxy.upstream_failed` with the error.
+
+Found in I09: the size is the number of body bytes written to the client (as sent, so a
+compressed body counts compressed), so it is always known; sizes use powers of 1024. A
+request for an unknown service is logged too, without `tmock.service` and `server.address`.
+`server.address` is the upstream's host name without the port.
 
 ---
 
@@ -1999,7 +2042,7 @@ Update this table as issues are created and closed.
 | I06 | Scenarios | #47 | In review | empty values unset, headers checked as HTTP tokens; `app.Error.Field` puts conflicts next to their field; `confirm:ask` for the unsaved-changes guard; switches toggle fields with CSS `:has`; select, switch, toggle field, form section, collapsible, popover, header rows and code textarea components; a test that every component has an `app.css` section |
 | I07 | Clients, assignments, tokens | #49 | In review | `internal/condition` (model, parse, validate, empty rule; evaluation in I10); tokens are SHA-256 only; `tmock.client`, `tmock.client.id`, `tmock.clients.disabled`; the table reloads on `clients:changed`; Regenerate asks; chip, chip list, icon button, button group and copy field components; `dbtest` caps parallel DB tests per package |
 | I08 | Condition builder, accounts (M1) | | In review | `internal/condition/builder` (form ↔ tree ↔ condition; `edit=<op>:<path>` buttons that also work without JavaScript); user use cases with the admin rules under a table lock; Accounts and My Account; placeholder pages removed; the modal Close button works inside forms with their own Alpine component; builder edits are `hx-sync` drop, so a quick second edit cannot undo the first; the unsaved-changes guard is shared (`unsavedGuard`) and covers the builder; saves that change no user field are not written or logged; after a failed rename the client's Delete confirmation names the client as stored; the per-service tables of the scenario list and the assignment modal line up (`TableProps.Widths`: fixed column widths from size classes, since the CSP allows no inline styles); hidden input, menu, inline error, condition group and item components |
-| I09 | Proxy core and catalog cache | | Planned | |
+| I09 | Proxy core and catalog cache | | In review | `internal/catalog` (immutable snapshot, TTL, one rebuild at a time, invalidation counter so a change during a rebuild is not lost, old snapshot kept on failure); `store.Catalog` reads it in one `REPEATABLE READ` transaction; `app.Options.Catalog` invalidated next to `tmock.entity.changed`; `internal/proxy` on `ReverseProxy.Rewrite`, putting back the client's `X-Forwarded-*` that `ReverseProxy` strips; no transport compression; `PROXY_UPSTREAM_TIMEOUT` for connect and response headers; proxy requests skip the request log (`logx.Traced`); `cmd/echo-upstream`; the rebuild lock is a channel for `synctest` |
 | I10 | Matching and mocking | | Planned | |
 | I11 | Request-condition expressions | | Planned | |
 | I12 | Liquid template subset | | Planned | |

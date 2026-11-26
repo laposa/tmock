@@ -206,6 +206,7 @@ func (a *App) DisableAllClients(ctx context.Context, actor Actor) error {
 	if err != nil {
 		return err
 	}
+	a.invalidateCatalog()
 	attrs := append(actor.attrs(),
 		slog.String(logx.AttrEventName, logx.EventEntityChanged),
 		slog.String(logx.AttrEntityType, logx.EntityClient),

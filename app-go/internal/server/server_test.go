@@ -192,3 +192,41 @@ func TestRejectedRequestHasNoRoute(t *testing.T) {
 		t.Errorf("log record %v", rec)
 	}
 }
+
+// Spec §9.6: proxy requests are logged by the proxy, not twice; the proxy still gets the
+// request's trace context (spec §2.4.4) and panic recovery.
+func TestProxyHasNoRequestLogButTraceContext(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(logx.NewHandler(slog.LevelDebug, slog.NewJSONHandler(&logs, nil), nil))
+	proxy := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/proxy/boom/" {
+			panic("kaboom")
+		}
+		logger.InfoContext(r.Context(), "proxied", logx.AttrEventName, logx.EventProxyRequest)
+	})
+	h := New(Options{Proxy: proxy, Logger: logger})
+
+	r := httptest.NewRequest("GET", "/api/proxy/svc/x", nil)
+	r.Header.Set("Traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	h.ServeHTTP(httptest.NewRecorder(), r)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/proxy/boom/", nil))
+	if rec.Code != 500 {
+		t.Errorf("panic: status %d", rec.Code)
+	}
+
+	var events []string
+	for line := range bytes.SplitSeq(bytes.TrimSpace(logs.Bytes()), []byte("\n")) {
+		var m map[string]any
+		if err := json.Unmarshal(line, &m); err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, m[logx.AttrEventName].(string))
+		if m[logx.AttrEventName] == logx.EventProxyRequest && m["trace_id"] != "4bf92f3577b34da6a3ce929d0e0e4736" {
+			t.Errorf("proxy record without the trace id: %v", m)
+		}
+	}
+	if strings.Join(events, ",") != logx.EventProxyRequest+","+logx.EventHTTPPanic {
+		t.Errorf("events %v, want no %s for proxy requests", events, logx.EventHTTPRequest)
+	}
+}

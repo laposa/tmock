@@ -67,6 +67,10 @@ const (
 
 	AttrClientsDisabled = "tmock.clients.disabled" // how many clients disable-all disabled
 
+	AttrCatalogServices  = "tmock.catalog.services"
+	AttrCatalogScenarios = "tmock.catalog.scenarios"
+	AttrCatalogClients   = "tmock.catalog.clients"
+
 	AttrMigrationVersion = "tmock.migration.version"
 	AttrMigrationName    = "tmock.migration.name"
 

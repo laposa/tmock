@@ -3,18 +3,23 @@ package logx_test
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/laposa/tmock/app-go/internal/api"
 	"github.com/laposa/tmock/app-go/internal/app"
 	"github.com/laposa/tmock/app-go/internal/auth"
+	"github.com/laposa/tmock/app-go/internal/catalog"
 	"github.com/laposa/tmock/app-go/internal/db/dbtest"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/logx/logxtest"
 	"github.com/laposa/tmock/app-go/internal/password"
+	"github.com/laposa/tmock/app-go/internal/proxy"
 	"github.com/laposa/tmock/app-go/internal/server"
 	"github.com/laposa/tmock/app-go/internal/store"
 )
@@ -165,6 +170,58 @@ func TestUserPasswordsNeverLogged(t *testing.T) {
 	}
 	for _, r := range logs.All() {
 		for _, s := range secrets {
+			if strings.Contains(r.Text(), s) {
+				t.Errorf("record leaks %q: %s", s, r.Text())
+			}
+		}
+	}
+}
+
+// loaderFunc adapts a function to catalog.Loader.
+type loaderFunc func(context.Context) (store.CatalogData, error)
+
+func (f loaderFunc) Load(ctx context.Context) (store.CatalogData, error) { return f(ctx) }
+
+// Spec §2.4.3: a proxied request logs neither SERVICES_API_KEY nor the client's
+// credentials and header values, on success or when the upstream fails.
+func TestProxiedRequestNeverLogsSecrets(t *testing.T) {
+	t.Parallel()
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Set-Cookie", "up=upstream-cookie-value")
+		_, _ = io.WriteString(w, "response-body-value")
+	}))
+	defer up.Close()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	down := "http://" + ln.Addr().String()
+	ln.Close() // nothing listens there: connection refused
+	logs, logger := logxtest.New()
+	cat := catalog.NewCache(loaderFunc(func(context.Context) (store.CatalogData, error) {
+		return store.CatalogData{Services: []store.CatalogService{
+			{Service: store.Service{ID: 1, Path: "svc", Name: "S", UpstreamURL: up.URL}},
+			{Service: store.Service{ID: 2, Path: "down", Name: "D", UpstreamURL: down}},
+		}}, nil
+	}), catalog.Options{TTL: time.Minute, Logger: logger})
+	h := server.New(server.Options{Logger: logger, Proxy: proxy.New(proxy.Options{
+		Catalog: cat, Logger: logger, APIKey: "services-api-key-value"})})
+
+	for _, path := range []string{"/api/proxy/svc/a", "/api/proxy/down/a"} {
+		r := httptest.NewRequest("POST", path, strings.NewReader("request-body-value"))
+		r.Header.Set("X-Client-Token", "tmck_token-value")
+		r.Header.Set("Authorization", "Bearer authorization-value")
+		r.Header.Set("Cookie", "tmock_session=cookie-value")
+		r.Header.Set("Apikey", "client-apikey-value")
+		r.Header.Set("X-Custom", "custom-header-value")
+		h.ServeHTTP(httptest.NewRecorder(), r)
+	}
+	if len(logs.Events(logx.EventProxyRequest)) != 2 || len(logs.Events(logx.EventUpstreamFailed)) != 1 {
+		t.Fatalf("records: %+v", logs.All())
+	}
+	for _, r := range logs.All() {
+		for _, s := range []string{"services-api-key-value", "tmck_token-value", "authorization-value", "cookie-value",
+			"client-apikey-value", "custom-header-value", "request-body-value", "response-body-value", "upstream-cookie-value"} {
 			if strings.Contains(r.Text(), s) {
 				t.Errorf("record leaks %q: %s", s, r.Text())
 			}

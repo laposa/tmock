@@ -32,12 +32,20 @@ type App struct {
 	services  *store.Services
 	scenarios *store.Scenarios
 	clients   *store.Clients
+	catalog   Invalidator
 }
+
+// Invalidator is told about every change to services, scenarios and clients, so the
+// proxy's catalog is rebuilt before its next request (spec §7.2). *catalog.Cache is one.
+type Invalidator interface{ Invalidate() }
 
 // Options configures the use cases. The zero value is ready for production.
 type Options struct {
 	Logger *slog.Logger    // nil means slog.Default()
 	Hasher password.Hasher // the zero value uses password.DefaultIterations
+	// Catalog is invalidated after every mutation of services, scenarios and clients.
+	// Nil means there is no catalog to invalidate (tests, and commands without a proxy).
+	Catalog Invalidator
 }
 
 // New returns the use cases on pool.
@@ -53,6 +61,7 @@ func New(pool *sql.DB, opts Options) *App {
 		services:  store.NewServices(pool),
 		scenarios: store.NewScenarios(pool),
 		clients:   store.NewClients(pool),
+		catalog:   opts.Catalog,
 	}
 }
 

@@ -23,9 +23,11 @@ import (
 	"github.com/laposa/tmock/app-go/internal/api"
 	"github.com/laposa/tmock/app-go/internal/app"
 	"github.com/laposa/tmock/app-go/internal/auth"
+	"github.com/laposa/tmock/app-go/internal/catalog"
 	"github.com/laposa/tmock/app-go/internal/config"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/password"
+	"github.com/laposa/tmock/app-go/internal/proxy"
 	"github.com/laposa/tmock/app-go/internal/server"
 	"github.com/laposa/tmock/app-go/internal/store"
 	"github.com/laposa/tmock/app-go/internal/web"
@@ -133,11 +135,24 @@ func runServer(ctx context.Context, logger *slog.Logger, cfg config.Config, pool
 	if err != nil {
 		return fmt.Errorf("cannot listen: %w", err)
 	}
-	uc := app.New(pool, app.Options{Logger: logger, Hasher: password.Default})
+	cat := catalog.NewCache(store.NewCatalog(pool), catalog.Options{
+		TTL:       cfg.CacheTTL,
+		Disabled:  cfg.DisableCache,
+		Overrides: cfg.UpstreamOverrides,
+		Logger:    logger,
+	})
+	uc := app.New(pool, app.Options{Logger: logger, Hasher: password.Default, Catalog: cat})
 	sessions := auth.New(store.NewSessions(pool), auth.Options{Secret: cfg.SessionSecret, Secure: cfg.Production(), Logger: logger})
 	handler := server.New(server.Options{
-		UI:         web.Handler(web.Deps{App: uc, Sessions: sessions, Logger: logger}),
-		API:        api.New(uc, sessions, logger),
+		UI:  web.Handler(web.Deps{App: uc, Sessions: sessions, Logger: logger}),
+		API: api.New(uc, sessions, logger),
+		Proxy: proxy.New(proxy.Options{
+			Catalog:                cat,
+			Logger:                 logger,
+			APIKey:                 cfg.ServicesAPIKey,
+			RemoveForwardedHeaders: cfg.ProxyRemoveForwardedHeaders,
+			UpstreamTimeout:        cfg.ProxyUpstreamTimeout,
+		}),
 		Logger:     logger,
 		Production: cfg.Production(),
 	})

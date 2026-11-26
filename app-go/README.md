@@ -4,12 +4,13 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I08** (milestone M1, the dashboard). You can log in and manage
-  services, scenarios, clients (with the condition builder, scenario assignments and client
-  tokens), and, as an admin, user accounts; every user can edit their own account. The REST API
-  has login, logout, `me` and CRUD on `/api/service`, `/api/scenario`, `/api/client` (with
-  client tokens) and `/api/user` (with `/api/user/profile`). The proxy follows in I09–I13.
-  Progress is tracked in spec §16.
+- **Status:** iteration **I09** (proxy core). You can log in and manage services, scenarios,
+  clients (with the condition builder, scenario assignments and client tokens), and, as an
+  admin, user accounts; every user can edit their own account. The REST API has login,
+  logout, `me` and CRUD on `/api/service`, `/api/scenario`, `/api/client` (with client tokens)
+  and `/api/user` (with `/api/user/profile`). `/api/proxy/{service}/…` forwards every request
+  to the service's upstream; client matching and mocking follow in I10–I13. Progress is
+  tracked in spec §16.
 
 ## Prerequisites
 
@@ -104,6 +105,25 @@ make otel-logs
 
 Stop the collector (`docker compose --profile otel stop otel-collector`) and requests stay
 fast; after about 30 s of retries the console reports `OTLP log export failed`.
+
+Trying the proxy with the fake upstream `cmd/echo-upstream`, which answers every request with
+a JSON description of what it received:
+
+```bash
+go run ./cmd/echo-upstream          # localhost:8081; -status 503, -delay 2s, -gzip, -addr :9000
+make run                            # in another terminal
+# in the dashboard (Services → Add Service): path "echo", upstream URL http://localhost:8081/base
+curl -i 'localhost:3000/api/proxy/echo/a/b?x=1'   # echo shows "url": "/base/a/b?x=1"
+curl -i localhost:3000/api/proxy/nope              # 404 Service not found
+```
+
+Each proxy request is logged once, as `tmock.proxy.request` (`<ip> <METHOD> <url> <status>
+<ms>ms <size>`); a failing upstream answers `502 Bad Gateway` and logs
+`tmock.proxy.upstream_failed`. The proxy reads a cached catalog of services, scenarios and
+clients (`CACHE_TTL`, default `10m`; `DISABLE_CACHE=true` reads the database on every
+request). Every change made in the dashboard or the REST API invalidates it, so the next proxy
+request sees the change; at `LOG_LEVEL=debug` each rebuild logs `tmock.catalog.rebuilt`. With
+several replicas, each has its own cache: changes reach the others within `CACHE_TTL`.
 
 Without `SESSION_SECRET`, sessions end when the server restarts (spec §9.2); set one in `.env` to
 keep them.
@@ -241,6 +261,7 @@ See spec §2.3 for the full layout. What exists so far:
 ```
 cmd/tmock/            the binary: config, logging set-up, lifecycle; the only package that
                       wires the UI into the server
+cmd/echo-upstream/    dev tool: a fake upstream that echoes each request as JSON
 dev/vendorjs/         `make vendor-js`: re-downloads and verifies vendored JavaScript
 dev/otelcol.yaml      collector config for `make otel-up`
 internal/api/         REST handlers (health check, login, logout, me, services, scenarios,
@@ -248,13 +269,15 @@ internal/api/         REST handlers (health check, login, logout, me, services, 
 internal/app/         use cases shared by the REST API and the UI; app.Error (spec §2.1, §6.2)
 internal/auth/        sessions: cookie, lookup, logout, hourly sweep; the user and admin guards
 internal/auth/authtest/  in-memory session store for handler tests
+internal/catalog/     the proxy's cached snapshot: TTL, single rebuild, invalidation (spec §7.2)
 internal/clientip/    the client-IP rule (spec §7.3)
 internal/config/      configuration and .env loading (spec §4)
 internal/db/          connection pool, typed errors, migration runner and migrations (spec §3.3, §5)
 internal/db/dbtest/   per-test schemas for DB integration tests
 internal/password/    PBKDF2 password hashing (spec §9.1)
+internal/proxy/       /api/proxy/: service lookup, upstream forwarding, proxy log (spec §7)
 internal/store/       repositories over database/sql (users, sessions, services, scenarios,
-                      clients)
+                      clients, and the catalog snapshot read)
 internal/condition/   client conditions: JSON model, parsing, validation, the empty rule
 internal/condition/builder/  the condition builder's tree: form ↔ tree ↔ condition, and its edits
 internal/httpx/       HTTP plumbing: error format, JSON decode/encode, Optional[T], Validator,
