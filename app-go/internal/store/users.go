@@ -144,6 +144,83 @@ func (r *Users) SetPasswordHash(ctx context.Context, id int64, hash string) erro
 	return oneRow(res)
 }
 
+// UserFields are the columns an update sets. An empty PasswordHash keeps the password.
+type UserFields struct {
+	Name         string
+	Email        string
+	PasswordHash string
+	Admin        bool
+}
+
+// Modify is a read-modify-write of the user with id, for the rules that depend on the
+// other users (spec §6.4: the last admin stays an admin). In one transaction it takes a
+// lock that every other Modify and Delete also takes, so they run one after the other;
+// sessions and logins can still read users meanwhile. fn gets the user and the number of
+// admins, and returns the fields to store; an error from fn is returned as it is and
+// nothing changes. fn must not use the database. Modify returns the user as stored,
+// ErrNotFound, or ErrUnique for a taken email.
+func (r *Users) Modify(ctx context.Context, id int64, fn func(cur User, admins int) (UserFields, error)) (User, error) {
+	var out User
+	err := r.locked(ctx, id, func(tx *sql.Tx, cur User, admins int) error {
+		f, err := fn(cur, admins)
+		if err != nil {
+			return err
+		}
+		hash := f.PasswordHash
+		if hash == "" {
+			hash = cur.PasswordHash
+		}
+		out, err = scanUser(tx.QueryRowContext(ctx,
+			`UPDATE users SET name = $2, email = $3, password_hash = $4, admin = $5 WHERE id = $1 RETURNING `+userColumns,
+			id, f.Name, f.Email, hash, f.Admin))
+		return err
+	})
+	return out, err
+}
+
+// Delete removes the user with id, with their sessions (cascade), under the lock of
+// Modify, if check (given the user and the number of admins) returns nil; otherwise it
+// returns check's error and deletes nothing. It returns the user as they were, or
+// ErrNotFound.
+func (r *Users) Delete(ctx context.Context, id int64, check func(cur User, admins int) error) (User, error) {
+	var out User
+	err := r.locked(ctx, id, func(tx *sql.Tx, cur User, admins int) error {
+		if err := check(cur, admins); err != nil {
+			return err
+		}
+		out = cur
+		_, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, id)
+		return db.MapError(err)
+	})
+	return out, err
+}
+
+// locked runs fn in a transaction that holds the users write lock (SHARE ROW EXCLUSIVE
+// conflicts with itself and with writes, not with reads), with the user and the number
+// of admins as they are under the lock.
+func (r *Users) locked(ctx context.Context, id int64, fn func(tx *sql.Tx, cur User, admins int) error) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return db.MapError(err)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after Commit
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return db.MapError(err)
+	}
+	cur, err := scanUser(tx.QueryRowContext(ctx, `SELECT `+userColumns+` FROM users WHERE id = $1`, id))
+	if err != nil {
+		return err
+	}
+	var admins int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE admin`).Scan(&admins); err != nil {
+		return db.MapError(err)
+	}
+	if err := fn(tx, cur, admins); err != nil {
+		return err
+	}
+	return db.MapError(tx.Commit())
+}
+
 type scanner interface{ Scan(dest ...any) error }
 
 func scanUser(s scanner) (User, error) {

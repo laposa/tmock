@@ -123,11 +123,6 @@ func TestText(t *testing.T) {
 		`<p class="text text--muted" x-on:click="go">a</p>`)
 }
 
-func TestOutput(t *testing.T) {
-	check(t, "output", Output(OutputProps{ID: "o", Attrs: []g.Node{click}}),
-		`<output class="output" id="o" aria-live="polite" x-on:click="go"></output>`)
-}
-
 func TestToastRegion(t *testing.T) {
 	check(t, "region", ToastRegion(),
 		`<div class="toasts" id="toasts" x-data="toasts" aria-live="polite">`+
@@ -329,4 +324,89 @@ func TestCopyField(t *testing.T) {
 		`<div class="field"><label class="field__label" for="tok">Token</label><div class="copy-field" x-data="copyField" data-copied="Copied!">`+
 			`<input class="copy-field__input" id="tok" type="text" readonly value="tmck_&lt;x&gt;" spellcheck="false" autocomplete="off" aria-describedby="tok-message" x-on:focus="select">`+
 			`<button type="button" class="button button--primary" x-on:click="copy">Copy</button></div><p class="field__hint" id="tok-message">once</p></div>`)
+}
+
+func TestHidden(t *testing.T) {
+	check(t, "hidden", Hidden(HiddenProps{Name: "n.0.kind", Value: `a"b`}),
+		`<input type="hidden" name="n.0.kind" value="a&#34;b">`)
+}
+
+func TestInlineError(t *testing.T) {
+	check(t, "hidden until shown", InlineError(InlineErrorProps{Message: "No <match>", Attrs: []g.Node{click}}),
+		`<p class="inline-error" role="alert" hidden x-on:click="go">No &lt;match&gt;</p>`)
+	check(t, "shown", InlineError(InlineErrorProps{Message: "No", Shown: true}),
+		`<p class="inline-error" role="alert">No</p>`)
+}
+
+func TestMenu(t *testing.T) {
+	check(t, "menu", Menu(MenuProps{Label: "Add Expression", Items: []MenuItem{
+		{Label: "Group", Submit: true, Attrs: []g.Node{click}},
+		{Label: "IP <Address>"},
+	}}),
+		`<details class="menu"><summary class="menu__button">Add Expression</summary>`+
+			`<div class="menu__list" role="menu">`+
+			`<button type="submit" class="menu__item" role="menuitem" x-on:click="go">Group</button>`+
+			`<button type="button" class="menu__item" role="menuitem">IP &lt;Address&gt;</button>`+
+			`</div></details>`)
+}
+
+func TestConditionGroup(t *testing.T) {
+	item := g.Text("[item]")
+	edit := g.Attr("value", "e")
+	check(t, "top-level AND group, NOT off, two children", ConditionGroup(ConditionGroupProps{
+		NotAttrs: []g.Node{edit}, OperatorAttrs: []g.Node{edit},
+		Children: []g.Node{item, item}, Add: g.Text("[menu]"),
+		Hidden: []g.Node{Hidden(HiddenProps{Name: "n.0.kind", Value: "group"})},
+	}),
+		`<div class="condition-group" role="group"><input type="hidden" name="n.0.kind" value="group">`+
+			`<div class="condition-group__head"><button type="submit" class="condition-group__not" aria-pressed="false" title="Negate this group" value="e">NOT</button>`+
+			`<span class="condition-group__paren" aria-hidden="true">(</span></div>`+
+			`<div class="condition-group__body"><div class="condition-group__child">[item]</div>`+
+			`<button type="submit" class="condition-group__operator" title="Switch between AND and OR" value="e">AND</button>`+
+			`<div class="condition-group__child">[item]</div><div class="condition-group__actions">[menu]</div></div>`+
+			`<div class="condition-group__foot"><span class="condition-group__paren" aria-hidden="true">)</span></div></div>`)
+	check(t, "nested OR group, NOT on, removable, with an error", ConditionGroup(ConditionGroupProps{
+		Not: true, Or: true, Children: []g.Node{item, item}, RemoveLabel: "Remove this group", RemoveAttrs: []g.Node{click}, Error: "bad <group>",
+	}),
+		`<div class="condition-group" role="group">`+
+			`<div class="condition-group__head"><button type="submit" class="condition-group__not" aria-pressed="true" title="Negate this group">NOT</button>`+
+			`<span class="condition-group__paren" aria-hidden="true">(</span></div>`+
+			`<div class="condition-group__body"><div class="condition-group__child">[item]</div>`+
+			`<button type="submit" class="condition-group__operator condition-group__operator--or" title="Switch between AND and OR">OR</button>`+
+			`<div class="condition-group__child">[item]</div><div class="condition-group__actions"></div></div>`+
+			`<div class="condition-group__foot"><span class="condition-group__paren" aria-hidden="true">)</span>`+
+			`<button type="submit" class="condition-group__remove" aria-label="Remove this group" x-on:click="go">✕</button></div>`+
+			`<p class="condition-group__error">bad &lt;group&gt;</p></div>`)
+}
+
+func TestConditionItem(t *testing.T) {
+	check(t, "IP, no header", ConditionItem(ConditionItemProps{
+		Kind: ConditionIP, KindLabel: "IP Address", Operator: "Equals",
+		Value:       ConditionInput{Label: "IP address", Name: "n.0.0.value", Value: "10.0.0.1", Placeholder: "10.0.0.1"},
+		RemoveLabel: "Remove", RemoveAttrs: []g.Node{click},
+	}),
+		`<div class="condition-item"><div class="condition-item__row">`+
+			`<span class="condition-item__kind condition-item__kind--ip">IP Address</span>`+
+			`<button type="submit" class="condition-item__operator" aria-pressed="false" title="Negate this expression">Equals</button>`+
+			`<input class="condition-item__input" type="text" id="n.0.0.value" name="n.0.0.value" value="10.0.0.1" placeholder="10.0.0.1" aria-label="IP address">`+
+			`<button type="submit" class="condition-item__remove" aria-label="Remove" x-on:click="go">✕</button></div></div>`)
+	check(t, "negated header regex with errors", ConditionItem(ConditionItemProps{
+		Kind: ConditionHeaderRegex, KindLabel: "Header Regex", Operator: "Not Matches", Not: true, OperatorAttrs: []g.Node{click},
+		Header: &ConditionInput{Label: "Header name", Name: "h", Error: "must be 1–255 characters"},
+		Value:  ConditionInput{Label: "Pattern", Name: "v", Value: "(", Error: "is not a valid <regex>"},
+		Hidden: []g.Node{Hidden(HiddenProps{Name: "k", Value: "headerRegex"})},
+	}),
+		`<div class="condition-item"><input type="hidden" name="k" value="headerRegex"><div class="condition-item__row">`+
+			`<span class="condition-item__kind condition-item__kind--header-regex">Header Regex</span>`+
+			`<input class="condition-item__input" type="text" id="h" name="h" aria-label="Header name" aria-invalid="true" aria-describedby="h-message">`+
+			`<button type="submit" class="condition-item__operator" aria-pressed="true" title="Negate this expression" x-on:click="go">Not Matches</button>`+
+			`<input class="condition-item__input" type="text" id="v" name="v" value="(" aria-label="Pattern" aria-invalid="true" aria-describedby="v-message"></div>`+
+			`<p class="condition-item__error" id="h-message">Header name: must be 1–255 characters</p>`+
+			`<p class="condition-item__error" id="v-message">Pattern: is not a valid &lt;regex&gt;</p></div>`)
+	for kind, class := range map[ConditionKind]string{ConditionCIDR: "cidr", ConditionHeader: "header"} {
+		got := render(t, ConditionItem(ConditionItemProps{Kind: kind}))
+		if !strings.Contains(got, "condition-item__kind--"+class+`"`) {
+			t.Errorf("kind %d: %s", kind, got)
+		}
+	}
 }

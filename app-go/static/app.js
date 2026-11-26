@@ -75,10 +75,12 @@ document.addEventListener('alpine:init', () => {
         dialog.querySelector('#modal-body').replaceChildren();
       });
     },
-    // The Close button of modal content (components.CloseModalButton). $root, not $el:
-    // in an x-on handler $el is the button that was clicked.
+    // The Close button of modal content (components.CloseModalButton). In an x-on
+    // handler $el is the button that was clicked, and $root the nearest component, which
+    // is the form when the form has one of its own (requiredFields): close the dialog
+    // the button is in.
     close() {
-      this.$root.close();
+      this.$el.closest('dialog')?.close();
     },
   }));
 
@@ -340,9 +342,22 @@ document.addEventListener('alpine:init', () => {
     },
   }));
 
-  // Shows on placeholder pages that both libraries are running (I00 verification).
-  Alpine.data('jsStatus', () => ({
-    message: `htmx ${htmx.version} and Alpine ${Alpine.version} are running.`,
+  // ── My Account (pages.MyAccountForm, spec §10.3 M1) ───────────────────────
+  // Save stays disabled while the new password and its confirmation differ; the inline
+  // error shows once something is typed into the confirmation. The server checks it too.
+  Alpine.data('passwordConfirm', () => ({
+    mismatch: false,
+    matches: true,
+    init() {
+      this.check();
+    },
+    check() {
+      const value = (name) => this.$root.querySelector(`[name="${name}"]`)?.value ?? '';
+      const next = value('newPassword');
+      const confirm = value('confirmPassword');
+      this.mismatch = next !== confirm;
+      this.matches = confirm === '' || next === confirm;
+    },
   }));
 });
 

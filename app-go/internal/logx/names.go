@@ -83,6 +83,7 @@ const (
 	EntityService  = "service"
 	EntityScenario = "scenario"
 	EntityClient   = "client"
+	EntityUser     = "user"
 
 	ActionCreate        = "create"
 	ActionUpdate        = "update"

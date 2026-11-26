@@ -278,7 +278,7 @@ Durations are logged in milliseconds as integers (`tmock.duration_ms`).
 | `tmock.auth.login.failed` | warn | wrong email or password | `client.address` (never the email or password) | I04 |
 | `tmock.auth.logout` | info | logout | `user.id` | I04 |
 | `tmock.session.swept` | debug | hourly sweep (§9.2) | `tmock.sessions.deleted` | I04 |
-| `tmock.entity.changed` | info | a service, scenario, client or user was created, updated or deleted, or a client token was generated or revoked | `tmock.entity.type`, `tmock.entity.id`, `tmock.entity.action` (`create` \| `update` \| `delete` \| `token-generate` \| `token-revoke` \| `disable-all`), `tmock.actor` (`user` \| `client-token`), `user.id` or `tmock.client.id`; for a service also `tmock.service` (its path after the change); for a scenario `tmock.service` and `tmock.scenario` (its name); for a client `tmock.client` (its name). `disable-all` has no `tmock.entity.id` and carries `tmock.clients.disabled` (how many) | I05–I08 |
+| `tmock.entity.changed` | info | a service, scenario, client or user was created, updated or deleted, or a client token was generated or revoked | `tmock.entity.type`, `tmock.entity.id`, `tmock.entity.action` (`create` \| `update` \| `delete` \| `token-generate` \| `token-revoke` \| `disable-all`), `tmock.actor` (`user` \| `client-token`), `user.id` or `tmock.client.id`; for a service also `tmock.service` (its path after the change); for a scenario `tmock.service` and `tmock.scenario` (its name); for a client `tmock.client` (its name); for a user nothing more (never the email). `disable-all` has no `tmock.entity.id` and carries `tmock.clients.disabled` (how many) | I05–I08 |
 | `tmock.catalog.rebuilt` | debug | a new snapshot is in place (§7.2) | `tmock.duration_ms`, `tmock.catalog.services`, `tmock.catalog.scenarios`, `tmock.catalog.clients` | I09 |
 | `tmock.catalog.rebuild_failed` | error | the rebuild failed; the old snapshot stays | `error.type`, `exception.message` | I09 |
 | `tmock.proxy.request` | info | each proxy request (§7.9) | `http.request.method`, `url.path`, `url.query`, `http.response.status_code`, `client.address`, `tmock.service`, `server.address` (upstream host), `tmock.duration_ms`, `http.response.body.size` (when known); from I10 also `tmock.client`, `tmock.scenario`, `tmock.mocked` (array of `status`, `headers`, `body`), `tmock.proxy_skipped` | I09, I10 |
@@ -809,6 +809,26 @@ Rules:
 
 Passwords are at least 8 characters. Demoting the last admin is also rejected with `400`.
 
+Found in I08:
+
+- `name` (1–255) and `email` are trimmed. `email` must be a bare address as `net/mail` parses
+  it (`a@example.com`, not `Ann <a@example.com>`), at most 254 characters; its case is kept,
+  and uniqueness ignores case. Passwords are 8–1024 characters (the upper bound limits the work
+  of one hash). `null` on any field is `400`.
+- Messages: `409` `A user with email "x" already exists`; `404` `User 7 not found`; deleting
+  yourself `400` `You cannot delete your own account`; deleting the last admin `400`
+  `The last admin cannot be deleted`; demoting them `400` with
+  `details.admin: "the last admin must stay an admin"`. A new profile password without
+  `currentPassword` is `details.currentPassword: "is required to set a new password"`, a wrong
+  one `"is not correct"`; `currentPassword` alone changes nothing. The profile cannot change
+  `admin` (`400`, unknown field). There is no `GET /api/user/{id}` (`405`).
+- The admin rules depend on the other users, so updates and deletes of users take a
+  `SHARE ROW EXCLUSIVE` lock on `users` (it conflicts with itself and with writes, not with
+  the session reads): two admins demoting or deleting each other at once leave one admin.
+  Password hashing happens before the lock.
+- A password change does not end the user's other sessions (not required; a candidate for
+  I16).
+
 ### 6.5 OpenAPI
 
 `openapi/openapi.json` (OpenAPI 3.1) is written by hand and embedded. `GET /swagger` serves a page
@@ -1178,7 +1198,8 @@ implementation is new.
   replaces the modal content with the re-rendered form. A successful save or delete answers `200`
   with the refreshed list, `HX-Retarget` naming the list's id and `HX-Reswap: outerHTML`, and one
   `HX-Trigger` with both the success toast and `modal:close`. A Close button in the content calls
-  the `modal` component's `close()`.
+  the `modal` component's `close()`, which closes the dialog the button is in (found in I08:
+  inside a form with an Alpine component of its own, `$root` is that form, not the dialog).
 - **Confirmations** use a second, smaller `<dialog id="confirm">`. Buttons carry `hx-confirm`;
   `app.js` cancels htmx 4's `htmx:confirm` event, shows the question, and calls
   `issueRequest()` on Confirm or `dropRequest()` on Cancel or Escape, instead of
@@ -1219,6 +1240,13 @@ Every bullet is an acceptance item for its iteration.
   saves the assignment **immediately** when toggled, and an info icon showing the scenario's
   settings (popover).
 - C7 Condition builder (§10.5).
+- Found in I08: "Conditions" opens the builder in its own modal ("Edit Client Conditions:
+  **x**"), so the edit modal (C4) is the name and Delete again. The builder does not close on a
+  backdrop click (its edits are unsaved). Save closes it with the toast "Condition of **x**
+  saved" and refreshes the table; problems are shown under the expression they are about
+  (`IP address: must be an IPv4 or IPv6 address`). Emptying the condition of an enabled client
+  is refused with "This client is enabled, and an enabled client needs a condition. Add an
+  expression, or disable the client first."
 - Found in I07: the table reloads itself when a modal changes a client (the assignment and token
   modals raise `clients:changed`, the table has `hx-trigger="clients:changed from:body"`).
   Regenerate also asks first, because the current token stops working. The token modal does not
@@ -1266,11 +1294,21 @@ Every bullet is an acceptance item for its iteration.
 - A3 Edit modal: name, email, new password ("leave blank to keep"), admin. Only changed fields are
   saved.
 - A4 Delete asks for confirmation; errors (own account, last admin) appear as toasts.
+- Found in I08: the table's last column has Edit and Delete as text buttons. The edit modal
+  carries the values it was opened with (hidden `orig.*` inputs), and only fields that differ
+  from them are sent, so it does not set back a change made meanwhile; a blank new password
+  keeps the password. A refused delete is `422` with `HX-Reswap: none` and the toast "The user
+  was not deleted". Demoting the last admin shows the message under the Admin switch.
 
 **My Account** (`/my-account`)
 - M1 Name, email, current password, new password, confirm new password. An inline error appears
   when the new and confirm passwords differ, and Save is disabled. Only changed fields are saved;
   the password fields are cleared after success.
+- Found in I08: Save is disabled whenever the new password and its confirmation differ; the
+  inline error shows once something is typed into the confirmation. The server checks the
+  confirmation too (`does not match the new password`). Name and email are saved if they
+  differ from the stored ones; the password needs the current one. After a save, or a failed
+  one, the form comes back with the password fields empty, and a toast.
 
 ### 10.4 Body editor
 
@@ -1290,6 +1328,25 @@ error inline if the JSON is invalid. There is no syntax highlighting.
   an AND/OR chip between siblings; an "Add Expression" menu (native `<details>` menu); the
   top-level group cannot be deleted; an empty condition starts as `{"and": []}`.
 - The parse → operation → serialise logic lives in a pure Go package and is unit-tested.
+- Found in I08 (`internal/condition/builder`):
+  - A button can send one name and value without JavaScript, so the edit and the path travel
+    together as `edit=<op>:<path>` (`edit=remove:n.0.1`, `edit=add-headerRegex:n.0`), not as
+    separate `op` and `path` parameters. The operations are `add-group`, `add-ip`, `add-cidr`,
+    `add-header`, `add-headerRegex`, `remove`, `not` and `and-or`. Every builder button is a
+    submit button with that value and a `formaction`, so the builder also works without
+    JavaScript; a hidden first submit button makes Enter in a text field mean Save.
+  - Inputs per node: `<path>.kind` (`group`, `ip`, `cidr`, `header`, `headerRegex`),
+    `<path>.not=on`, `<path>.op` (`and`/`or`, groups), `<path>.header` and `<path>.value`
+    (items). Child indexes need not be contiguous; a posted tree is limited to 500 nodes and
+    a depth of 32 (`400` beyond).
+  - NOT on an item is its operator chip, as in the legacy builder: "Equals"/"Not Equals",
+    "Matches"/"Not Matches" (header regex). New groups are AND groups.
+  - A root group without children is saved as no condition (`null`), whatever its NOT and
+    operator. A stored condition whose root is an item opens as an AND group holding it
+    (the same requests match). Header names, IP addresses and CIDR prefixes are trimmed;
+    header values and patterns are kept as typed.
+  - Validation problems (`condition.or[1].cidr`) are mapped back to the input they are about
+    (`n.0.1.value`).
 
 ### 10.6 Styling
 
@@ -1329,7 +1386,9 @@ change later in one place without editing the pages.
   inline error, popover, collapsible group (`<details>`), menu, card, page header, modal,
   confirmation dialog, toast region, brand, nav and nav item; from I06 also the toggle field
   (an optional field with its enable switch) and the form section (`<fieldset>`); from I07 the
-  chip list, button group and copy field. Composites built from these (the
+  chip list, button group and copy field; from I08 the hidden input, the menu, the inline
+  error and the condition group and condition item (the builder's composites). The output
+  element went with the placeholder pages it served. Composites built from these (the
   condition-group row, the header key/value rows) are components too, even when only one page
   uses them.
 - **Semantic props, no classes from callers.** A component takes a `…Props` struct with
@@ -1930,7 +1989,7 @@ Update this table as issues are created and closed.
 | I05 | Services | #45 | In review | path `.`/`..` rejected; modal saves answer with the list via `HX-Retarget`; `tmock.service` on the entity event; table, link button, modal content/footer components |
 | I06 | Scenarios | #47 | In review | empty values unset, headers checked as HTTP tokens; `app.Error.Field` puts conflicts next to their field; `confirm:ask` for the unsaved-changes guard; switches toggle fields with CSS `:has`; select, switch, toggle field, form section, collapsible, popover, header rows and code textarea components; a test that every component has an `app.css` section |
 | I07 | Clients, assignments, tokens | #49 | In review | `internal/condition` (model, parse, validate, empty rule; evaluation in I10); tokens are SHA-256 only; `tmock.client`, `tmock.client.id`, `tmock.clients.disabled`; the table reloads on `clients:changed`; Regenerate asks; chip, chip list, icon button, button group and copy field components; `dbtest` caps parallel DB tests per package |
-| I08 | Condition builder, accounts (M1) | | Planned | |
+| I08 | Condition builder, accounts (M1) | | In review | `internal/condition/builder` (form ↔ tree ↔ condition; `edit=<op>:<path>` buttons that also work without JavaScript); user use cases with the admin rules under a table lock; Accounts and My Account; placeholder pages removed; the modal Close button works inside forms with their own Alpine component; hidden input, menu, inline error, condition group and item components |
 | I09 | Proxy core and catalog cache | | Planned | |
 | I10 | Matching and mocking | | Planned | |
 | I11 | Request-condition expressions | | Planned | |

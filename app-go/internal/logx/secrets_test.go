@@ -116,3 +116,58 @@ func TestClientTokenNeverLogged(t *testing.T) {
 		}
 	}
 }
+
+// Passwords sent to the user endpoints (spec §6.4) appear in no record, whether the
+// change succeeds or fails, and neither do their hashes.
+func TestUserPasswordsNeverLogged(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.Migrated(t)
+	hasher := password.Hasher{Iterations: 1000}
+	hash, _ := hasher.Hash("admin-pass-value")
+	users := store.NewUsers(pool)
+	if _, err := users.Create(context.Background(), store.NewUser{Name: "Ann", Email: "ann@example.com", PasswordHash: hash, Admin: true}); err != nil {
+		t.Fatal(err)
+	}
+	logs, logger := logxtest.New()
+	sessions := auth.New(store.NewSessions(pool), auth.Options{Secret: []byte("session-secret-value-0123456789ab"), Logger: logger})
+	h := server.New(server.Options{API: api.New(app.New(pool, app.Options{Logger: logger, Hasher: hasher}), sessions, logger), Logger: logger})
+	do := func(method, path, body string, c *http.Cookie) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		if c != nil {
+			r.AddCookie(c)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec
+	}
+	cookie := do("POST", "/api/auth/login", `{"email":"ann@example.com","password":"admin-pass-value"}`, nil).Result().Cookies()[0]
+	for _, c := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"POST", "/api/user", `{"name":"Bob","email":"bob@example.com","password":"bob-pass-value"}`, 201},
+		{"POST", "/api/user", `{"name":"Bob","email":"bob@example.com","password":"dup-pass-value"}`, 409},
+		{"PATCH", "/api/user/2", `{"password":"bob-new-pass-value"}`, 200},
+		{"PATCH", "/api/user/profile", `{"currentPassword":"wrong-pass-value","newPassword":"ann-new-pass-value"}`, 400},
+		{"PATCH", "/api/user/profile", `{"currentPassword":"admin-pass-value","newPassword":"ann-new-pass-value"}`, 200},
+	} {
+		if rec := do(c.method, c.path, c.body, cookie); rec.Code != c.status {
+			t.Fatalf("%s %s: %d %s", c.method, c.path, rec.Code, rec.Body.String())
+		}
+	}
+	stored, _ := users.List(context.Background())
+	secrets := []string{"admin-pass-value", "bob-pass-value", "dup-pass-value", "bob-new-pass-value", "wrong-pass-value", "ann-new-pass-value"}
+	for _, u := range stored {
+		secrets = append(secrets, u.PasswordHash)
+	}
+	if len(logs.Events(logx.EventEntityChanged)) != 3 {
+		t.Fatalf("records: %+v", logs.All())
+	}
+	for _, r := range logs.All() {
+		for _, s := range secrets {
+			if strings.Contains(r.Text(), s) {
+				t.Errorf("record leaks %q: %s", s, r.Text())
+			}
+		}
+	}
+}

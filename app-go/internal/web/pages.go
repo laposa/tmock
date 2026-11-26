@@ -7,7 +7,6 @@ import (
 	"github.com/laposa/tmock/app-go/internal/app"
 	"github.com/laposa/tmock/app-go/internal/auth"
 	"github.com/laposa/tmock/app-go/internal/clientip"
-	"github.com/laposa/tmock/app-go/internal/views/layout"
 	"github.com/laposa/tmock/app-go/internal/views/pages"
 )
 
@@ -31,15 +30,6 @@ func (u *ui) guarded(admin bool, page func(http.ResponseWriter, *http.Request, a
 			return
 		}
 		page(w, r.WithContext(auth.WithUser(r.Context(), user)), user)
-	})
-}
-
-// placeholder serves a page that a later iteration builds.
-func (u *ui) placeholder(s layout.Section, title, iteration string, admin bool) http.Handler {
-	return u.guarded(admin, func(w http.ResponseWriter, r *http.Request, user app.User) {
-		u.render(w, r, http.StatusOK, pages.Placeholder(pages.PlaceholderProps{
-			Section: s, Title: title, Iteration: iteration, Admin: user.Admin,
-		}))
 	})
 }
 
