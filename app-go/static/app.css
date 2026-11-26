@@ -47,6 +47,17 @@
   --color-chip-bg: rgba(255, 255, 255, 0.12);
   --color-chip-text: #ffffff;
 
+  /* Legacy condition builder (ClientConditionGroup.vue, ClientConditionItem.vue) */
+  --color-condition-on-chip: rgba(0, 0, 0, 0.87);
+  --color-condition-paren: #bbdefb;
+  --color-condition-not: #c62828;
+  --color-condition-and: #009688;
+  --color-condition-or: #00bcd4;
+  --color-condition-ip: #b2dfdb;
+  --color-condition-cidr: #c5cae9;
+  --color-condition-header: #ffecb3;
+  --color-condition-header-regex: #ffccbc;
+
   /* Vuetify v-tooltip */
   --color-tooltip-bg: rgba(97, 97, 97, 0.92);
   --color-tooltip-text: #ffffff;
@@ -104,6 +115,9 @@
   --icon-button-size: 32px;
   --chip-height: 32px;
   --chip-radius: 16px;                 /* v-chip: fully rounded */
+  --condition-indent: 20px;            /* legacy ClientConditionGroup.vue .sub-conditions > div */
+  --condition-input-width: 12rem;
+  --menu-width: 12rem;
 
   /* Type: legacy base.css */
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
@@ -313,10 +327,6 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
 .text { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 
 .text--muted { color: var(--color-text-muted); }
-
-/* ── output.go ─────────────────────────────────────────────────────────────── */
-
-.output { font-family: var(--font-mono); }
 
 /* ── button.go ─────────────────────────────────────────────────────────────── */
 
@@ -545,6 +555,11 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
   padding: 0 var(--space-3);
   overflow-wrap: anywhere;
 }
+
+/* TableProps.Widths: the same widths in every table, whatever the content. */
+.table--fixed .table__table { table-layout: fixed; }
+.table__col--small { width: 6.5rem; }
+.table__col--medium { width: 10rem; }
 
 .table__row + .table__row .table__cell { border-top: 1px solid var(--color-table-border); }
 
@@ -922,3 +937,196 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
 }
 
 .copy-field__input:focus { outline: 0; border-color: var(--color-focus); box-shadow: inset 0 0 0 1px var(--color-focus); }
+
+/* ── hidden.go ─────────────────────────────────────────────────────────────── */
+
+/* A hidden input has no look. */
+
+/* ── inlineerror.go ────────────────────────────────────────────────────────── */
+
+.inline-error { margin: 0; padding: 0 var(--space-3); font-size: var(--font-size-small); color: var(--color-text-error); }
+
+.inline-error[hidden] { display: none; }
+
+/* ── menu.go ───────────────────────────────────────────────────────────────── */
+
+/* Legacy v-btn size="small" with a v-menu. */
+.menu { position: relative; display: inline-block; }
+
+.menu__button {
+  display: inline-flex;
+  align-items: center;
+  height: calc(var(--control-height) - var(--space-2));
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  letter-spacing: var(--button-letter-spacing);
+  text-transform: uppercase;
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  list-style: none;
+  cursor: pointer;
+}
+
+.menu__button::-webkit-details-marker { display: none; }
+
+.menu__button:hover { background: var(--color-primary-hover); }
+
+.menu__list {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: var(--menu-width);
+  padding: var(--space-1) 0;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+
+.menu__item {
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+  text-align: left;
+  color: var(--color-on-surface);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.menu__item:hover,
+.menu__item:focus-visible { outline: 0; background: var(--color-border); }
+
+/* ── conditiongroup.go ─────────────────────────────────────────────────────── */
+
+.condition-group { margin: var(--space-2) 0; }
+
+.condition-group__head,
+.condition-group__foot { display: flex; align-items: center; gap: var(--space-2); }
+
+.condition-group__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding-left: var(--condition-indent);
+}
+
+.condition-group__child { align-self: stretch; }
+
+.condition-group__actions { margin: var(--space-1) 0 var(--space-2); }
+
+/* The chips: legacy v-chip. NOT is faded and struck through while off. */
+.condition-group__not,
+.condition-group__paren,
+.condition-group__operator,
+.condition-group__remove {
+  display: inline-flex;
+  align-items: center;
+  height: var(--chip-height);
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: var(--font-size-button);
+  border: 0;
+  border-radius: var(--chip-radius);
+}
+
+.condition-group__paren { color: var(--color-condition-on-chip); background: var(--color-condition-paren); }
+
+.condition-group__not {
+  color: var(--color-on-danger);
+  background: var(--color-condition-not);
+  text-decoration: line-through;
+  opacity: 0.3;
+  cursor: pointer;
+}
+
+.condition-group__not[aria-pressed="true"] { text-decoration: none; opacity: 1; }
+
+.condition-group__operator {
+  color: var(--color-on-primary);
+  background: var(--color-condition-and);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+
+.condition-group__operator--or { background: var(--color-condition-or); }
+
+/* Legacy .delete: shown on hover (and to the keyboard on focus). */
+.condition-group__remove {
+  color: var(--color-on-danger);
+  background: var(--color-danger);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.condition-group__foot:hover .condition-group__remove,
+.condition-group__remove:focus-visible { opacity: 1; }
+
+.condition-group__error { margin: 0; font-size: var(--font-size-small); color: var(--color-text-error); }
+
+/* ── conditionitem.go ──────────────────────────────────────────────────────── */
+
+.condition-item { display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-1) 0; }
+
+.condition-item__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+
+.condition-item__kind,
+.condition-item__operator,
+.condition-item__remove {
+  display: inline-flex;
+  align-items: center;
+  height: var(--chip-height);
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: var(--font-size-button);
+  white-space: nowrap;
+  border: 0;
+  border-radius: var(--chip-radius);
+}
+
+.condition-item__kind { color: var(--color-condition-on-chip); }
+.condition-item__kind--ip { background: var(--color-condition-ip); }
+.condition-item__kind--cidr { background: var(--color-condition-cidr); }
+.condition-item__kind--header { background: var(--color-condition-header); }
+.condition-item__kind--header-regex { background: var(--color-condition-header-regex); }
+
+.condition-item__operator {
+  color: var(--color-on-surface);
+  background: var(--color-default-button);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+
+.condition-item__operator[aria-pressed="true"] { color: var(--color-on-danger); background: var(--color-condition-not); }
+
+.condition-item__input {
+  width: var(--condition-input-width);
+  height: var(--chip-height);
+  padding: 0 var(--space-2);
+  font: inherit;
+  color: var(--color-heading);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color-field-border);
+}
+
+.condition-item__input:focus { outline: 0; border-bottom-color: var(--color-focus); box-shadow: inset 0 -1px 0 var(--color-focus); }
+
+.condition-item__input[aria-invalid="true"] { border-bottom-color: var(--color-text-error); }
+
+.condition-item__remove {
+  color: var(--color-on-danger);
+  background: var(--color-danger);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.condition-item:hover .condition-item__remove,
+.condition-item__remove:focus-visible { opacity: 1; }
+
+.condition-item__error { margin: 0; font-size: var(--font-size-small); color: var(--color-text-error); }

@@ -43,7 +43,8 @@ func newClient(t *testing.T, h http.Handler, c *http.Cookie, name string) string
 	return m[len(m)-1][1]
 }
 
-// C1–C5: list, add, edit (name and condition), the enabled switch, chips, delete.
+// C1–C6: list, add, edit (name), the enabled switch, chips, assignments, delete. The
+// condition builder (C7) is in TestConditionBuilder.
 func TestClientsPage(t *testing.T) {
 	t.Parallel()
 	h, c, slow, down := clientUI(t)
@@ -76,7 +77,7 @@ func TestClientsPage(t *testing.T) {
 	wantContains(t, "row", rec.Body.String(),
 		`<input class="switch__input" type="checkbox" role="switch" name="enabled" hx-post="`+u+`/enabled" hx-trigger="change">`,
 		`hx-get="`+u+`/edit" hx-target="#modal-body">Phone &lt;1&gt;</button>`,
-		`hx-get="`+u+`/edit?focus=condition" hx-target="#modal-body">Conditions</button>`,
+		`hx-get="`+u+`/condition" hx-target="#modal-body">Conditions</button>`,
 		`aria-label="Assign scenarios to Phone &lt;1&gt;" title="Assign scenarios to Phone &lt;1&gt;" hx-get="`+u+`/scenarios" hx-target="#modal-body">`,
 		`hx-post="`+u+`/token" hx-target="#modal-body">Generate</button>`)
 
@@ -92,43 +93,37 @@ func TestClientsPage(t *testing.T) {
 		t.Error("the switch stayed on")
 	}
 
-	// C4: the edit modal, with the condition as JSON; "Conditions" opens it scrolled.
+	// C4: the edit modal: rename and Delete, and no condition (that is the builder's).
 	body = serve(h, "GET", u+"/edit", c, true).Body.String()
 	wantContains(t, "edit modal", body, `id="modal-title">Edit Client</h2>`, `hx-post="`+u+`"`, `value="Phone &lt;1&gt;"`,
-		`name="condition"`, `data-language="JSON"`, `hx-delete="`+u+`"`,
-		`hx-confirm="Are you sure you want to delete the client Phone &lt;1&gt;?"`)
-	if strings.Contains(body, "data-scroll-to") {
-		t.Error("edit modal scrolls without focus")
+		`hx-delete="`+u+`"`, `hx-confirm="Are you sure you want to delete the client Phone &lt;1&gt;?"`)
+	if strings.Contains(body, "condition") {
+		t.Error("the edit modal still edits the condition")
 	}
-	wantContains(t, "conditions link", serve(h, "GET", u+"/edit?focus=condition", c, true).Body.String(), `data-scroll-to="client-condition"`)
 	assertNoEval(t, body)
-
-	// Saving a bad condition shows the problems under the field.
-	rec = send(h, "POST", u, url.Values{"name": {"Phone"}, "condition": {`{"or":[{"ip":"x"},{"cidrr":"y"}]}`}}, c, true)
-	wantContains(t, "unknown field", rec.Body.String(), `not a valid condition: unknown field &#34;cidrr&#34;`)
-	if rec.Code != 422 {
-		t.Errorf("bad condition: %d", rec.Code)
-	}
-	rec = send(h, "POST", u, url.Values{"name": {"Phone"}, "condition": {`{"or":[{"ip":"x"},{"cidr":"y"}]}`}}, c, true)
-	wantContains(t, "invalid condition", rec.Body.String(),
-		`<p class="field__error" id="client-condition-message">or[0].ip: must be an IPv4 or IPv6 address; or[1].cidr: must be a CIDR prefix, such as 10.0.0.0/8 or 2001:db8::/32</p>`)
-
-	// A good condition and a new name.
-	rec = send(h, "POST", u, url.Values{"name": {"Phone"}, "condition": {"{\r\n\"headerMatch\": {\"header\": \"x-test\", \"value\": \"1\"}}"}}, c, true)
+	rec = send(h, "POST", u, url.Values{"name": {"Phone"}}, c, true)
 	if rec.Code != 200 || triggers(t, rec)["toast"]["title"] != `Client "Phone" updated` {
-		t.Fatalf("update: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("rename: %d %s", rec.Code, rec.Body.String())
 	}
-	wantContains(t, "stored condition", serve(h, "GET", u+"/edit", c, true).Body.String(),
-		"{\n  &#34;headerMatch&#34;: {\n    &#34;header&#34;: &#34;x-test&#34;,\n    &#34;value&#34;: &#34;1&#34;\n  }\n}</textarea>")
+	// A failed rename shows the typed name, but Delete names the client as stored.
+	rec = send(h, "POST", u, url.Values{"name": {"   "}}, c, true)
+	wantContains(t, "failed rename", rec.Body.String(), `hx-confirm="Are you sure you want to delete the client Phone?"`)
+	if rec.Code != 422 {
+		t.Errorf("failed rename: %d", rec.Code)
+	}
+	rec = send(h, "POST", u, url.Values{"name": {strings.Repeat("x", 300)}}, c, true)
+	wantContains(t, "too long rename", rec.Body.String(), `value="`+strings.Repeat("x", 300)+`"`,
+		`hx-confirm="Are you sure you want to delete the client Phone?"`)
 
-	// C2: now enabling works; disabling too.
+	// C2: with a condition, enabling works; disabling too.
+	rec = send(h, "POST", u+"/condition", url.Values{"n.0.kind": {"group"}, "n.0.0.kind": {"header"}, "n.0.0.header": {"x-test"}, "n.0.0.value": {"1"}}, c, true)
+	if rec.Code != 200 {
+		t.Fatalf("condition: %d %s", rec.Code, rec.Body.String())
+	}
 	rec = send(h, "POST", u+"/enabled", url.Values{"enabled": {"on"}}, c, true)
 	if rec.Code != 200 || triggers(t, rec)["toast"]["title"] != `Client "Phone" enabled` || !strings.Contains(rec.Body.String(), `name="enabled" checked`) {
 		t.Errorf("enable: %d %v", rec.Code, rec.Header())
 	}
-	// Clearing the condition of an enabled client is refused, under the condition field.
-	rec = send(h, "POST", u, url.Values{"name": {"Phone"}, "condition": {""}}, c, true)
-	wantContains(t, "clear while enabled", rec.Body.String(), `enabled: a client needs a condition before it can be enabled`)
 	rec = send(h, "POST", u+"/enabled", url.Values{}, c, true)
 	if rec.Code != 200 || triggers(t, rec)["toast"]["title"] != `Client "Phone" disabled` {
 		t.Errorf("disable: %d %v", rec.Code, rec.Header())
@@ -138,6 +133,7 @@ func TestClientsPage(t *testing.T) {
 	body = serve(h, "GET", u+"/scenarios", c, true).Body.String()
 	wantContains(t, "assignment modal", body, `id="modal-title">Scenarios of Phone</h2>`,
 		`<span class="collapsible__title">My Svc</span><span class="collapsible__meta">svc</span>`,
+		`<div class="table table--fixed">`,
 		`<div id="assignment-`+id+`-`+slow+`"><div class="switch"><label class="switch__control"><input class="switch__input" type="checkbox" role="switch" name="assigned" hx-post="`+u+`/scenarios/`+slow+`" hx-trigger="change" hx-target="#assignment-`+id+`-`+slow+`" hx-swap="outerHTML">`,
 		`id="scenario-`+slow+`-info" popover="manual"`, "Method:    any")
 	assertNoEval(t, body)
@@ -233,9 +229,9 @@ func TestClientFormErrors(t *testing.T) {
 	if rec.Code != 422 || !strings.Contains(rec.Body.String(), `id="client-name-message">A client named &#34;taken&#34; already exists</p>`) {
 		t.Errorf("duplicate: %d %s", rec.Code, rec.Body.String())
 	}
-	rec = send(h, "POST", "/ui/clients/"+other, url.Values{"name": {"taken"}, "condition": {`{"ip":`}}, c, true)
-	if rec.Code != 422 || !strings.Contains(rec.Body.String(), "not a valid condition: the JSON ends too early") || !strings.Contains(rec.Body.String(), `value="taken"`) {
-		t.Errorf("bad JSON: %d %s", rec.Code, rec.Body.String())
+	rec = send(h, "POST", "/ui/clients/"+other, url.Values{"name": {"taken"}}, c, true)
+	if rec.Code != 422 || !strings.Contains(rec.Body.String(), `id="client-name-message">A client named &#34;taken&#34; already exists</p>`) || !strings.Contains(rec.Body.String(), `value="taken"`) {
+		t.Errorf("rename to a taken name: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -266,6 +262,7 @@ func TestClientRoutesNeedSession(t *testing.T) {
 		{"POST", "/ui/clients/1/enabled"}, {"GET", "/ui/clients/1/scenarios"},
 		{"POST", "/ui/clients/1/scenarios/1"}, {"DELETE", "/ui/clients/1/scenarios/1"},
 		{"POST", "/ui/clients/1/token"}, {"DELETE", "/ui/clients/1/token"},
+		{"GET", "/ui/clients/1/condition"}, {"POST", "/ui/clients/1/condition"}, {"POST", "/ui/clients/1/condition/edit"},
 	} {
 		rec := send(h, r.method, r.path, url.Values{"name": {"x"}}, nil, true)
 		if rec.Code != 200 || rec.Header().Get("HX-Redirect") != "/login" {

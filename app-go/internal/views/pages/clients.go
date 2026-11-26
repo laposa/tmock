@@ -1,7 +1,6 @@
 package pages
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -10,7 +9,6 @@ import (
 	h "maragu.dev/gomponents/html"
 
 	"github.com/laposa/tmock/app-go/internal/app"
-	"github.com/laposa/tmock/app-go/internal/condition"
 	"github.com/laposa/tmock/app-go/internal/views/components"
 	"github.com/laposa/tmock/app-go/internal/views/hx"
 	"github.com/laposa/tmock/app-go/internal/views/layout"
@@ -22,13 +20,6 @@ const ClientsTableID = "clients-table"
 // ClientsChangedEvent is raised (HX-Trigger) when a change made in a modal should show in
 // the clients table: the table reloads itself.
 const ClientsChangedEvent = "clients:changed"
-
-// ClientConditionID is the condition field of the edit modal, which "Conditions" opens the
-// modal scrolled to.
-const ClientConditionID = "client-condition"
-
-// FocusCondition is the editor focus that "Conditions" asks for.
-const FocusCondition = "condition"
 
 // ClientsProps is what the clients page shows.
 type ClientsProps struct {
@@ -90,7 +81,7 @@ func ClientsTable(list []app.Client) g.Node {
 			}),
 			components.LinkButton(components.LinkButtonProps{Label: c.Name, Attrs: []g.Node{hx.Get(url + "/edit"), modal}}),
 			components.LinkButton(components.LinkButtonProps{Label: "Conditions",
-				Attrs: []g.Node{hx.Get(url + "/edit?focus=" + FocusCondition), modal}}),
+				Attrs: []g.Node{hx.Get(ConditionURL(c.ID)), modal}}),
 			components.ChipList(components.ChipListProps{Chips: chips, End: components.IconButton(components.IconButtonProps{
 				Label: "Assign scenarios to " + c.Name, Icon: components.IconAdd,
 				Attrs: []g.Node{hx.Get(url + "/scenarios"), modal},
@@ -109,48 +100,43 @@ func ClientsTable(list []app.Client) g.Node {
 
 // ClientFormProps is what the add and edit modals show.
 type ClientFormProps struct {
-	ID          int64 // 0 in the add modal
-	Name        string
-	Condition   string // the condition as JSON text, as the user wrote it or indented
-	Focus       string // FocusCondition: the modal opens scrolled to the condition
+	ID   int64 // 0 in the add modal
+	Name string
+	// StoredName is the client's name as stored, for the Delete confirmation, when Name is
+	// what was typed (a failed save); empty means Name.
+	StoredName  string
 	Error       string
-	FieldErrors map[string]string // "name", "condition"
+	FieldErrors map[string]string // "name"
 }
 
 // ClientForm is the add modal (C3: name only; the client starts disabled) or, with ID,
-// the edit modal (C4: rename, the condition as JSON until the builder, Delete).
+// the edit modal (C4: rename, Delete). The condition has its own modal, the builder.
 func ClientForm(p ClientFormProps) g.Node {
 	edit := p.ID != 0
 	title, action, save := "Add Client", "/ui/clients", "Create"
 	if edit {
 		title, action, save = "Edit Client", ClientURL(p.ID), "Save"
 	}
-	fields := []g.Node{components.TextField(components.TextFieldProps{
-		Label: "Name", Name: "name", ID: "client-name", Value: p.Name, Error: p.FieldErrors["name"], Required: true,
-	})}
 	var start []g.Node
-	formAttrs := []g.Node{hx.Post(action), hx.Target("#" + components.ModalBodyID)}
 	if edit {
-		fields = append(fields, components.CodeTextarea(components.CodeTextareaProps{
-			Label: "Condition", Name: "condition", ID: ClientConditionID, Value: p.Condition,
-			Language: components.LanguageJSON, Rows: 10, Error: p.FieldErrors["condition"],
-			Hint: `The condition as JSON, for example {"headerMatch": {"header": "x-test", "value": "1"}}. Leave it empty for none; an enabled client needs one.`,
-		}))
+		stored := p.StoredName
+		if stored == "" {
+			stored = p.Name
+		}
 		start = append(start, components.Button(components.ButtonProps{
 			Label: "Delete", Variant: components.ButtonDanger,
-			Attrs: []g.Node{hx.Delete(ClientURL(p.ID)), hx.Confirm("Are you sure you want to delete the client " + p.Name + "?")},
+			Attrs: []g.Node{hx.Delete(ClientURL(p.ID)), hx.Confirm("Are you sure you want to delete the client " + stored + "?")},
 		}))
-		if p.Focus == FocusCondition {
-			formAttrs = append(formAttrs, g.Attr("data-scroll-to", ClientConditionID))
-		}
 	}
 	return components.ModalContent(components.ModalContentProps{
 		Title: title,
 		Body: []g.Node{components.Form(components.FormProps{
 			Action: action,
 			Error:  p.Error,
-			Attrs:  formAttrs,
-			Fields: fields,
+			Attrs:  []g.Node{hx.Post(action), hx.Target("#" + components.ModalBodyID)},
+			Fields: []g.Node{components.TextField(components.TextFieldProps{
+				Label: "Name", Name: "name", ID: "client-name", Value: p.Name, Error: p.FieldErrors["name"], Required: true,
+			})},
 			Footer: components.ModalFooter(components.ModalFooterProps{
 				Start: start,
 				End: []g.Node{
@@ -166,18 +152,6 @@ func ClientForm(p ClientFormProps) g.Node {
 // JavaScript.
 func ClientFormPage(admin bool, p ClientFormProps) g.Node {
 	return clientPage(admin, ClientForm(p))
-}
-
-// ConditionText is a stored condition as the edit modal's text: indented JSON, or empty.
-func ConditionText(c *condition.Condition) string {
-	if c == nil {
-		return ""
-	}
-	b, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return ""
-	}
-	return string(b)
 }
 
 // AssignmentsProps is what the assignment modal shows.
@@ -227,7 +201,8 @@ func Assignments(p AssignmentsProps) g.Node {
 		}
 		groups = append(groups, components.Collapsible(components.CollapsibleProps{
 			Title: title, Meta: path, Open: n > 0 || len(p.Scenarios) == end-start,
-			Body: []g.Node{components.Table(components.TableProps{Columns: []string{"Assigned", "Settings"}, Rows: rows})},
+			Body: []g.Node{components.Table(components.TableProps{Columns: []string{"Assigned", "Settings"}, Rows: rows,
+				Widths: []components.ColumnWidth{components.ColumnFill, components.ColumnSmall}})},
 		}))
 		start = end
 	}

@@ -4,11 +4,11 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I07** (clients). You can log in to the dashboard and manage
-  services, scenarios and clients, with scenario assignments and client tokens; Accounts and
-  My Account are placeholder pages until I08, which also brings the condition builder (until
-  then conditions are edited as JSON). The REST API has login, logout, `me` and CRUD on
-  `/api/service`, `/api/scenario` and `/api/client`, with client tokens.
+- **Status:** iteration **I08** (milestone M1, the dashboard). You can log in and manage
+  services, scenarios, clients (with the condition builder, scenario assignments and client
+  tokens), and, as an admin, user accounts; every user can edit their own account. The REST API
+  has login, logout, `me` and CRUD on `/api/service`, `/api/scenario`, `/api/client` (with
+  client tokens) and `/api/user` (with `/api/user/profile`). The proxy follows in I09–I13.
   Progress is tracked in spec §16.
 
 ## Prerequisites
@@ -196,8 +196,8 @@ components.Form(components.FormProps{
   a form with `422` on validation errors, and use `fail` for other errors: the status, an error
   toast and `HX-Reswap: none` (spec §10.2).
 - `static/app.js` holds the Alpine components (`toasts`, `modal`, `confirm`, `requiredFields`,
-  `popover`, `headerRows`, `codeEditor`, `scenarioEditor`, `copyField`); HTML refers to them by
-  name only.
+  `popover`, `headerRows`, `codeEditor`, `scenarioEditor`, `copyField`, `passwordConfirm`);
+  HTML refers to them by name only.
 - A list that other actions change can reload itself: the clients table has
   `hx-trigger="clients:changed from:body"`, and a handler raises the event with
   `trigger(w, pages.ClientsChangedEvent, …)` (the assignment and token modals do).
@@ -209,6 +209,11 @@ components.Form(components.FormProps{
   is a `ModalFooter`. The form posts with `hx-target="#modal-body"`, so a `422` replaces the
   modal content with the re-rendered form. A successful save answers with the refreshed list
   and `HX-Retarget` / `HX-Reswap: outerHTML` pointing at it, plus a toast and `closeModal`.
+- **Server-side editing** (the condition builder is the example): every button is a submit
+  button with `name`, `value` and a `formaction`, plus `hx-post` to the same URL, so htmx posts
+  the whole form with the clicked button's value, and a browser without JavaScript does the
+  same. The handler parses the form, applies the edit and renders the form again; only Save
+  stores anything. A hidden first submit button makes Enter in a text field mean Save.
 - **Optional fields** (the scenario editor is the example): `components.ToggleField` pairs a
   switch with its control and shows one or the other with CSS (`:has`), so it works without
   JavaScript; the handler ignores a control whose switch is off.
@@ -251,6 +256,7 @@ internal/password/    PBKDF2 password hashing (spec §9.1)
 internal/store/       repositories over database/sql (users, sessions, services, scenarios,
                       clients)
 internal/condition/   client conditions: JSON model, parsing, validation, the empty rule
+internal/condition/builder/  the condition builder's tree: form ↔ tree ↔ condition, and its edits
 internal/httpx/       HTTP plumbing: error format, JSON decode/encode, Optional[T], Validator,
                       panic recovery, security headers, cross-origin protection, proxy CORS
 internal/logx/        log handlers, event names, trace context, request log (spec §2.4)

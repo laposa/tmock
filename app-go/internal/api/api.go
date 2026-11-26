@@ -36,6 +36,7 @@ func (a *API) Register(mux *http.ServeMux) {
 	a.registerServices(mux)
 	a.registerScenarios(mux)
 	a.registerClients(mux)
+	a.registerUsers(mux)
 }
 
 // login is POST /api/auth/login: 200 with the user and the session cookie, 401 for a

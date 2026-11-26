@@ -8,12 +8,12 @@ import (
 	"strings"
 
 	"github.com/laposa/tmock/app-go/internal/app"
-	"github.com/laposa/tmock/app-go/internal/condition"
+	"github.com/laposa/tmock/app-go/internal/condition/builder"
 	"github.com/laposa/tmock/app-go/internal/httpx"
 	"github.com/laposa/tmock/app-go/internal/views/pages"
 )
 
-// registerClients adds the clients page (spec §10.3 C1–C6, C8) and its fragments.
+// registerClients adds the clients page (spec §10.3 C1–C8) and its fragments.
 func (u *ui) registerClients(mux *http.ServeMux) {
 	mux.Handle("GET /{$}", u.guarded(false, u.clientsPage))
 	mux.Handle("GET /ui/clients/table", u.guarded(false, u.clientsTable))
@@ -26,6 +26,9 @@ func (u *ui) registerClients(mux *http.ServeMux) {
 	mux.Handle("GET /ui/clients/{id}/scenarios", u.guarded(false, u.assignmentsModal))
 	mux.Handle("POST /ui/clients/{id}/scenarios/{scenario}", u.guarded(false, u.setAssignment))
 	mux.Handle("DELETE /ui/clients/{id}/scenarios/{scenario}", u.guarded(false, u.removeAssignment))
+	mux.Handle("GET /ui/clients/{id}/condition", u.guarded(false, u.conditionBuilder))
+	mux.Handle("POST /ui/clients/{id}/condition/edit", u.guarded(false, u.editCondition))
+	mux.Handle("POST /ui/clients/{id}/condition", u.guarded(false, u.saveCondition))
 	mux.Handle("POST /ui/clients/{id}/token", u.guarded(false, u.generateToken))
 	mux.Handle("DELETE /ui/clients/{id}/token", u.guarded(false, u.revokeToken))
 }
@@ -54,18 +57,13 @@ func (u *ui) newClientForm(w http.ResponseWriter, r *http.Request, user app.User
 	u.clientForm(w, r, user, http.StatusOK, pages.ClientFormProps{})
 }
 
-// editClientForm is the edit modal (C4); ?focus=condition opens it at the condition
-// ("Conditions" in the table).
+// editClientForm is the edit modal (C4).
 func (u *ui) editClientForm(w http.ResponseWriter, r *http.Request, user app.User) {
 	c, ok := u.pathClient(w, r)
 	if !ok {
 		return
 	}
-	p := pages.ClientFormProps{ID: c.ID, Name: c.Name, Condition: pages.ConditionText(c.Condition)}
-	if r.URL.Query().Get("focus") == pages.FocusCondition {
-		p.Focus = pages.FocusCondition
-	}
-	u.clientForm(w, r, user, http.StatusOK, p)
+	u.clientForm(w, r, user, http.StatusOK, pages.ClientFormProps{ID: c.ID, Name: c.Name})
 }
 
 // createClient creates a client from the add modal: name only, disabled.
@@ -82,24 +80,22 @@ func (u *ui) createClient(w http.ResponseWriter, r *http.Request, user app.User)
 	u.clientsChanged(w, r, http.StatusOK, toastSuccess, `Client "`+c.Name+`" created`, "", true)
 }
 
-// updateClient saves the edit modal: the name and the condition (as JSON text; empty is
-// none).
+// updateClient saves the edit modal: the name.
 func (u *ui) updateClient(w http.ResponseWriter, r *http.Request, user app.User) {
 	id, ok := u.pathID(w, r, "id")
 	if !ok || !parseForm(w, r) {
 		return
 	}
-	p := pages.ClientFormProps{ID: id, Name: r.PostForm.Get("name"), Condition: strings.ReplaceAll(r.PostForm.Get("condition"), "\r\n", "\n")}
-	cond, err := condition.Parse(p.Condition)
+	p := pages.ClientFormProps{ID: id, Name: r.PostForm.Get("name")}
+	c, err := u.app.UpdateClient(r.Context(), app.UserActor(user.ID), id, app.ClientPatch{Name: httpx.Some(p.Name)})
 	if err != nil {
-		u.clientFormError(w, r, user, p, app.InvalidField("condition", err.Error()))
-		return
-	}
-	c, err := u.app.UpdateClient(r.Context(), app.UserActor(user.ID), id, app.ClientPatch{
-		Name:      httpx.Some(p.Name),
-		Condition: httpx.Some(cond),
-	})
-	if err != nil {
+		// The form shows the typed name; Delete names the client as stored.
+		stored, getErr := u.app.GetClient(r.Context(), id)
+		if getErr != nil {
+			u.fail(w, r, getErr)
+			return
+		}
+		p.StoredName = stored.Name
 		u.clientFormError(w, r, user, p, err)
 		return
 	}
@@ -275,9 +271,8 @@ func (u *ui) clientForm(w http.ResponseWriter, r *http.Request, user app.User, s
 	u.render(w, r, status, pages.ClientFormPage(user.Admin, p))
 }
 
-// clientFormError shows a failed save (spec §10.2) as 422 with the form re-rendered and
-// an error toast. Condition problems (condition.*) and the enable rule are shown under the
-// condition field, the only field of the form they can be about.
+// clientFormError shows a failed save of the add or edit modal (spec §10.2) as 422 with
+// the form re-rendered and an error toast.
 func (u *ui) clientFormError(w http.ResponseWriter, r *http.Request, user app.User, p pages.ClientFormProps, err error) {
 	var appErr *app.Error
 	if !errors.As(err, &appErr) || (appErr.Kind != app.KindInvalid && appErr.Kind != app.KindConflict) {
@@ -285,27 +280,12 @@ func (u *ui) clientFormError(w http.ResponseWriter, r *http.Request, user app.Us
 		return
 	}
 	p.FieldErrors = map[string]string{}
-	var cond []string
-	keys := make([]string, 0, len(appErr.Details))
-	for k := range appErr.Details {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		msg := appErr.Details[k]
-		switch {
-		case k == "name":
+	for k, msg := range appErr.Details {
+		if k == "name" {
 			p.FieldErrors["name"] = msg
-		case k == "condition":
-			cond = append(cond, msg)
-		case strings.HasPrefix(k, "condition."), k == "enabled":
-			cond = append(cond, strings.TrimPrefix(k, "condition.")+": "+msg)
-		default:
-			p.Error = msg
+		} else {
+			p.Error = detailsText(appErr)
 		}
-	}
-	if len(cond) > 0 {
-		p.FieldErrors["condition"] = strings.Join(cond, "; ")
 	}
 	switch {
 	case appErr.Field != "":
@@ -385,4 +365,86 @@ func detailsText(e *app.Error) string {
 	sort.Strings(msgs)
 	s := strings.Join(msgs, "; ")
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// conditionBuilder is the condition builder (C7, spec §10.5), with the stored condition.
+func (u *ui) conditionBuilder(w http.ResponseWriter, r *http.Request, user app.User) {
+	c, ok := u.pathClient(w, r)
+	if !ok {
+		return
+	}
+	u.renderBuilder(w, r, user, http.StatusOK, pages.ConditionBuilderProps{
+		ClientID: c.ID, ClientName: c.Name, Tree: builder.FromCondition(c.Condition),
+	})
+}
+
+// editCondition applies one edit of the builder to the posted tree and answers with the
+// builder; nothing is saved. A form that is not a tree, or an edit that does not apply,
+// is a 400: the builder never sends one.
+func (u *ui) editCondition(w http.ResponseWriter, r *http.Request, user app.User) {
+	c, ok := u.pathClient(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	tree, err := builder.ParseForm(r.PostForm)
+	if err == nil {
+		var e builder.Edit
+		if e, err = builder.ParseEdit(r.PostForm.Get(pages.EditParam)); err == nil {
+			err = builder.Apply(&tree, e)
+		}
+	}
+	if err != nil {
+		u.fail(w, r, app.BadRequest("The condition could not be changed"))
+		return
+	}
+	u.renderBuilder(w, r, user, http.StatusOK, pages.ConditionBuilderProps{ClientID: c.ID, ClientName: c.Name, Tree: tree, Unsaved: true})
+}
+
+// saveCondition is the builder's Save: the posted tree becomes the client's condition
+// (an empty tree: none). Problems are shown next to the expressions they are about.
+func (u *ui) saveCondition(w http.ResponseWriter, r *http.Request, user app.User) {
+	c, ok := u.pathClient(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	tree, err := builder.ParseForm(r.PostForm)
+	if err != nil {
+		u.fail(w, r, app.BadRequest("The condition could not be read"))
+		return
+	}
+	saved, err := u.app.UpdateClient(r.Context(), app.UserActor(user.ID), c.ID, app.ClientPatch{Condition: httpx.Some(tree.Condition())})
+	var appErr *app.Error
+	switch {
+	case err == nil:
+		u.clientsChanged(w, r, http.StatusOK, toastSuccess, `Condition of "`+saved.Name+`" saved`, "", true)
+	case errors.As(err, &appErr) && appErr.Kind == app.KindInvalid:
+		p := pages.ConditionBuilderProps{ClientID: c.ID, ClientName: c.Name, Tree: tree, Errors: map[string]string{}, Unsaved: true}
+		for k, msg := range appErr.Details {
+			switch {
+			case k == "enabled": // msg is app.NeedsConditionMessage
+				p.Error = "This client is enabled, and an enabled client needs a condition. Add an expression, or disable the client first."
+			case k == "condition" || strings.HasPrefix(k, "condition."):
+				path, field := builder.FieldOf(strings.TrimPrefix(strings.TrimPrefix(k, "condition"), "."))
+				if field != "" {
+					path += "." + field
+				}
+				p.Errors[path] = msg
+			default:
+				p.Error = detailsText(appErr)
+			}
+		}
+		toast(w, toastError, "The condition was not saved", detailsText(appErr))
+		u.renderBuilder(w, r, user, http.StatusUnprocessableEntity, p)
+	default:
+		u.fail(w, r, err)
+	}
+}
+
+// renderBuilder answers with the builder: modal content for htmx, a page without.
+func (u *ui) renderBuilder(w http.ResponseWriter, r *http.Request, user app.User, status int, p pages.ConditionBuilderProps) {
+	if isHTMX(r) {
+		u.render(w, r, status, pages.ConditionBuilder(p))
+		return
+	}
+	u.render(w, r, status, pages.ConditionBuilderPage(user.Admin, p))
 }

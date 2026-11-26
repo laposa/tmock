@@ -25,6 +25,7 @@ func TestAttributes(t *testing.T) {
 		{Select("#x"), `hx-select="#x"`},
 		{Confirm(`Delete "x"?`), `hx-confirm="Delete &#34;x&#34;?"`},
 		{Trigger("change"), `hx-trigger="change"`},
+		{Sync("closest form:drop"), `hx-sync="closest form:drop"`},
 	}
 	for _, tc := range cases {
 		var b strings.Builder

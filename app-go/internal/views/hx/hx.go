@@ -44,6 +44,10 @@ func SwapInherited(style string) g.Node { return g.Attr("hx-swap:inherited", sty
 // Select picks the part of the response to swap in.
 func Select(selector string) g.Node { return g.Attr("hx-select", selector) }
 
+// Sync coordinates the element's requests with others, for example "closest form:drop":
+// while a request of the form is in flight, a new one is dropped.
+func Sync(spec string) g.Node { return g.Attr("hx-sync", spec) }
+
 // Confirm asks before the request is sent. app.js shows the question in the confirmation
 // dialog (spec §10.2) instead of window.confirm.
 func Confirm(question string) g.Node { return g.Attr("hx-confirm", question) }

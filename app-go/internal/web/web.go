@@ -16,7 +16,6 @@ import (
 	"github.com/laposa/tmock/app-go/internal/app"
 	"github.com/laposa/tmock/app-go/internal/auth"
 	"github.com/laposa/tmock/app-go/internal/logx"
-	"github.com/laposa/tmock/app-go/internal/views/layout"
 	"github.com/laposa/tmock/app-go/static"
 )
 
@@ -48,9 +47,7 @@ func Handler(d Deps) http.Handler {
 	u.registerServices(mux)
 	u.registerScenarios(mux)
 	u.registerClients(mux)
-	// Placeholders until each page's iteration (spec §15.3).
-	mux.Handle("GET /accounts", u.placeholder(layout.Accounts, "Accounts", "I08", true))
-	mux.Handle("GET /my-account", u.placeholder(layout.MyAccount, "My Account", "I08", false))
+	u.registerAccounts(mux)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticFiles()))
 	return mux
 }

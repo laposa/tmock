@@ -48,11 +48,11 @@ func TestRouteGuards(t *testing.T) {
 		{"/scenarios", nil, 303, "/login"},
 		{"/accounts", nil, 303, "/login"},
 		{"/my-account", nil, 303, "/login"},
-		// /, /services and /scenarios with a session need a database: clients_test.go,
-		// services_test.go, scenarios_test.go.
+		// /, /services, /scenarios and /accounts with a session need a database:
+		// clients_test.go, services_test.go, scenarios_test.go, accounts_test.go.
 		{"/my-account", user, 200, ""},
+		{"/my-account", admin, 200, ""},
 		{"/accounts", user, 303, "/"},
-		{"/accounts", admin, 200, ""},
 		{"/login", nil, 200, ""},
 		{"/login", user, 303, "/"},
 	}
@@ -73,7 +73,7 @@ func TestRouteGuards(t *testing.T) {
 
 // The pages a user sees: the navigation matches their role, nothing is cached, and no
 // page uses what would need eval (spec §10.1).
-func TestPlaceholderPages(t *testing.T) {
+func TestNavigationAndCaching(t *testing.T) {
 	h, sessions, _ := newHandler(t)
 	admin, user := sessionCookie(t, sessions, 1), sessionCookie(t, sessions, 2)
 
@@ -82,9 +82,6 @@ func TestPlaceholderPages(t *testing.T) {
 	for _, want := range []string{
 		"<title>My Account · Tmock</title>",
 		`<a class="nav__link" href="/my-account" aria-current="page">My Account</a>`,
-		"iteration I08",
-		`x-data="jsStatus"`,
-		`hx-get="/api/status"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/my-account lacks %q", want)
