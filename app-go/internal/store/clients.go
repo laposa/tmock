@@ -111,8 +111,27 @@ func (r *Clients) Create(ctx context.Context, f ClientFields, scenarios []int64)
 // returns ErrNotFound, ErrUnique for a taken name, or ErrForeignKey for an unknown
 // scenario id.
 func (r *Clients) Update(ctx context.Context, id int64, f ClientFields, scenarios []int64) (Client, error) {
+	return r.Modify(ctx, id, func(Client) (ClientFields, []int64, error) { return f, scenarios, nil })
+}
+
+// Modify is a read-modify-write of the client with id: in one transaction it locks the
+// client's row, passes the client to fn and stores the fields fn returns and, when they
+// are not nil, the assignments. Concurrent modifications of one client therefore run one
+// after the other, each seeing the result of the one before, and none is lost. fn must
+// not use the database (it runs while a pool connection is held); an error from fn is
+// returned as it is and nothing is changed. Modify returns the client as stored,
+// ErrNotFound, ErrUnique for a taken name, or ErrForeignKey for an unknown scenario id.
+func (r *Clients) Modify(ctx context.Context, id int64, fn func(cur Client) (ClientFields, []int64, error)) (Client, error) {
 	var out Client
 	err := r.inTx(ctx, func(tx *sql.Tx) error {
+		cur, err := r.getLocked(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		f, scenarios, err := fn(cur)
+		if err != nil {
+			return err
+		}
 		res, err := tx.ExecContext(ctx, `UPDATE clients SET name = $2, enabled = $3, condition = $4 WHERE id = $1`,
 			id, f.Name, f.Enabled, jsonValue(f.Condition))
 		if err != nil {
@@ -130,6 +149,34 @@ func (r *Clients) Update(ctx context.Context, id int64, f ClientFields, scenario
 		return err
 	})
 	return out, err
+}
+
+// SetScenario assigns the scenario to the client with id, or removes it, leaving its other
+// assignments as they are, in one transaction that locks the client's row (see Modify).
+// changed is false when the scenario already was in the wanted state. It returns the
+// client as stored, ErrNotFound, or ErrForeignKey for an unknown scenario id.
+func (r *Clients) SetScenario(ctx context.Context, id, scenarioID int64, assigned bool) (c Client, changed bool, err error) {
+	err = r.inTx(ctx, func(tx *sql.Tx) error {
+		if _, err := r.getLocked(ctx, tx, id); err != nil {
+			return err
+		}
+		q := `DELETE FROM client_scenarios WHERE client_id = $1 AND scenario_id = $2`
+		if assigned {
+			q = `INSERT INTO client_scenarios (client_id, scenario_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
+		}
+		res, err := tx.ExecContext(ctx, q, id, scenarioID)
+		if err != nil {
+			return db.MapError(err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return db.MapError(err)
+		}
+		changed = n > 0
+		c, err = r.get(ctx, tx, id)
+		return err
+	})
+	return c, changed, err
 }
 
 // Delete removes the client with id, with its assignments (cascade), and returns it as it
@@ -173,7 +220,16 @@ type querier interface {
 }
 
 func (r *Clients) get(ctx context.Context, q querier, id int64) (Client, error) {
-	c, err := scanClient(q.QueryRowContext(ctx, `SELECT `+clientColumns+` FROM clients WHERE id = $1`, id))
+	return r.getRow(ctx, q, `SELECT `+clientColumns+` FROM clients WHERE id = $1`, id)
+}
+
+// getLocked is get with the client's row locked until tx ends (SELECT … FOR UPDATE).
+func (r *Clients) getLocked(ctx context.Context, tx *sql.Tx, id int64) (Client, error) {
+	return r.getRow(ctx, tx, `SELECT `+clientColumns+` FROM clients WHERE id = $1 FOR UPDATE`, id)
+}
+
+func (r *Clients) getRow(ctx context.Context, q querier, query string, id int64) (Client, error) {
+	c, err := scanClient(q.QueryRowContext(ctx, query, id))
 	if err != nil {
 		return Client{}, err
 	}

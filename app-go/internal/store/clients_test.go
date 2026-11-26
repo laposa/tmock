@@ -4,6 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/laposa/tmock/app-go/internal/db/dbtest"
@@ -141,5 +144,123 @@ func TestClients(t *testing.T) {
 	exist, err := scenarios.ExistingScenarioIDs(ctx, []int64{s1.ID, s3.ID, 999999})
 	if err != nil || !exist[s1.ID] || exist[s3.ID] || exist[999999] || len(exist) != 1 {
 		t.Errorf("existing ids: %v, %v", exist, err)
+	}
+}
+
+// Modify locks the client's row from the read to the write: concurrent read-modify-writes
+// of one client run one after the other, so each sees the one before and none is lost.
+func TestClientModifyIsSerialised(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.Migrated(t)
+	clients := store.NewClients(pool)
+	ctx := context.Background()
+	c, err := clients.Create(ctx, store.ClientFields{Name: "n"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const writers = 10
+	var wg sync.WaitGroup
+	errs := make(chan error, writers)
+	for range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := clients.Modify(ctx, c.ID, func(cur store.Client) (store.ClientFields, []int64, error) {
+				return store.ClientFields{Name: cur.Name + "+"}, nil, nil
+			})
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := clients.Get(ctx, c.ID)
+	if want := "n" + strings.Repeat("+", writers); err != nil || got.Name != want {
+		t.Errorf("name %q, want %q (a write was lost): %v", got.Name, want, err)
+	}
+
+	// An error from fn changes nothing; a missing client is ErrNotFound before fn runs.
+	boom := errors.New("boom")
+	if _, err := clients.Modify(ctx, c.ID, func(store.Client) (store.ClientFields, []int64, error) {
+		return store.ClientFields{Name: "changed"}, nil, boom
+	}); !errors.Is(err, boom) {
+		t.Errorf("fn error: %v", err)
+	}
+	if got, _ := clients.Get(ctx, c.ID); got.Name == "changed" {
+		t.Error("a failed Modify changed the client")
+	}
+	if _, err := clients.Modify(ctx, 999999, func(store.Client) (store.ClientFields, []int64, error) {
+		t.Error("fn ran for a missing client")
+		return store.ClientFields{}, nil, nil
+	}); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("missing client: %v", err)
+	}
+}
+
+// SetScenario changes one assignment and leaves the others; concurrent calls do not undo
+// each other.
+func TestClientSetScenario(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.Migrated(t)
+	services, scenarios, clients := store.NewServices(pool), store.NewScenarios(pool), store.NewClients(pool)
+	ctx := context.Background()
+	svc, err := services.Create(ctx, store.ServiceFields{Path: "s", Name: "S", UpstreamURL: "http://s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	for i := range 10 {
+		s, err := scenarios.Create(ctx, store.ScenarioFields{ServiceID: svc.ID, Name: "sc" + strconv.Itoa(i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, s.ID)
+	}
+	c, err := clients.Create(ctx, store.ClientFields{Name: "c"}, []int64{ids[0]})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, changed, err := clients.SetScenario(ctx, c.ID, ids[1], true)
+	if err != nil || !changed || len(got.Scenarios) != 2 {
+		t.Errorf("assign: %+v, %v, %v", got.Scenarios, changed, err)
+	}
+	if _, changed, err := clients.SetScenario(ctx, c.ID, ids[1], true); err != nil || changed {
+		t.Errorf("assign again: changed %v, %v", changed, err)
+	}
+	got, changed, err = clients.SetScenario(ctx, c.ID, ids[0], false)
+	if err != nil || !changed || len(got.Scenarios) != 1 || got.Scenarios[0].ID != ids[1] {
+		t.Errorf("remove: %+v, %v, %v", got.Scenarios, changed, err)
+	}
+	if _, changed, err := clients.SetScenario(ctx, c.ID, ids[0], false); err != nil || changed {
+		t.Errorf("remove again: changed %v, %v", changed, err)
+	}
+	if _, _, err := clients.SetScenario(ctx, 999999, ids[0], true); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("missing client: %v", err)
+	}
+	if _, _, err := clients.SetScenario(ctx, c.ID, 999999, true); !errors.Is(err, store.ErrForeignKey) {
+		t.Errorf("unknown scenario: %v", err)
+	}
+
+	// Concurrent toggles end up all applied: none reads a list that another one is about
+	// to overwrite.
+	var wg sync.WaitGroup
+	for _, id := range ids[2:] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, _, err := clients.SetScenario(ctx, c.ID, id, true); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	got, err = clients.Get(ctx, c.ID)
+	if err != nil || len(got.Scenarios) != len(ids)-1 {
+		t.Errorf("after concurrent toggles: %d assignments, want %d: %v", len(got.Scenarios), len(ids)-1, err)
 	}
 }

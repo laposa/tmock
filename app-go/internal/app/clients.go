@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -106,15 +107,16 @@ func (a *App) GetClient(ctx context.Context, id int64) (Client, error) {
 // CreateClient validates in and creates the client. A taken name is a Conflict; unknown
 // scenario ids are a validation error.
 func (a *App) CreateClient(ctx context.Context, actor Actor, in ClientInput) (Client, error) {
-	d := clientDraft{Name: strings.TrimSpace(in.Name), Enabled: in.Enabled, Condition: in.Condition, Scenarios: in.Scenarios}
-	if d.Scenarios == nil {
-		d.Scenarios = []int64{}
-	}
-	f, err := a.clientFields(ctx, &d)
+	scenarios, unknown, err := a.checkScenarios(ctx, in.Scenarios)
 	if err != nil {
 		return Client{}, err
 	}
-	c, err := a.clients.Create(ctx, f, d.Scenarios)
+	d := clientDraft{Name: strings.TrimSpace(in.Name), Enabled: in.Enabled, Condition: in.Condition}
+	f, err := clientFields(d, unknown)
+	if err != nil {
+		return Client{}, err
+	}
+	c, err := a.clients.Create(ctx, f, scenarios)
 	if err != nil {
 		return Client{}, clientStoreError(err, 0, d.Name)
 	}
@@ -123,7 +125,9 @@ func (a *App) CreateClient(ctx context.Context, actor Actor, in ClientInput) (Cl
 }
 
 // UpdateClient changes the fields present in p of the client with id. The enable rule is
-// checked on the result: a client that is (or stays) enabled needs a condition.
+// checked on the result: a client that is (or stays) enabled needs a condition. The
+// client's row is locked from the read to the write, so concurrent updates of one client
+// run one after the other and none is lost.
 func (a *App) UpdateClient(ctx context.Context, actor Actor, id int64, p ClientPatch) (Client, error) {
 	var v httpx.Validator
 	v.Check(!p.Name.Null, "name", "is required")
@@ -132,38 +136,37 @@ func (a *App) UpdateClient(ctx context.Context, actor Actor, id int64, p ClientP
 	if !v.OK() {
 		return Client{}, Invalid(v.Details())
 	}
-
-	cur, err := a.clients.Get(ctx, id)
-	if err != nil {
-		return Client{}, StoreError(err, clientNotFound(id), nil)
-	}
-	curCond, err := decodeCondition(cur)
-	if err != nil {
-		return Client{}, err
-	}
-	d := clientDraft{Name: cur.Name, Enabled: cur.Enabled, Condition: curCond}
-	if s, ok := p.Name.Get(); ok {
-		d.Name = strings.TrimSpace(s)
-	}
-	if b, ok := p.Enabled.Get(); ok {
-		d.Enabled = b
-	}
-	if p.Condition.Set {
-		d.Condition = p.Condition.Value // nil when null
-	}
+	var scenarios []int64 // nil keeps the assignments
+	var unknown string
 	if ids, ok := p.Scenarios.Get(); ok {
-		d.Scenarios = ids
-		if d.Scenarios == nil {
-			d.Scenarios = []int64{}
+		var err error
+		if scenarios, unknown, err = a.checkScenarios(ctx, ids); err != nil {
+			return Client{}, err
 		}
 	}
-	f, err := a.clientFields(ctx, &d)
+
+	var name string // for the Conflict message
+	c, err := a.clients.Modify(ctx, id, func(cur store.Client) (store.ClientFields, []int64, error) {
+		curCond, err := decodeCondition(cur)
+		if err != nil {
+			return store.ClientFields{}, nil, err
+		}
+		d := clientDraft{Name: cur.Name, Enabled: cur.Enabled, Condition: curCond}
+		if s, ok := p.Name.Get(); ok {
+			d.Name = strings.TrimSpace(s)
+		}
+		if b, ok := p.Enabled.Get(); ok {
+			d.Enabled = b
+		}
+		if p.Condition.Set {
+			d.Condition = p.Condition.Value // nil when null
+		}
+		name = d.Name
+		f, err := clientFields(d, unknown)
+		return f, scenarios, err
+	})
 	if err != nil {
-		return Client{}, err
-	}
-	c, err := a.clients.Update(ctx, id, f, d.Scenarios) // nil Scenarios keeps them
-	if err != nil {
-		return Client{}, clientStoreError(err, id, d.Name)
+		return Client{}, clientStoreError(err, id, name)
 	}
 	a.clientChanged(ctx, actor, logx.ActionUpdate, c.ID, c.Name)
 	return clientFromStore(c)
@@ -171,20 +174,20 @@ func (a *App) UpdateClient(ctx context.Context, actor Actor, id int64, p ClientP
 
 // SetClientScenario assigns the scenario to the client, or removes it, keeping the
 // other assignments: the assignment modal's switches and the chips' ✕ (spec §10.3 C5,
-// C6). A scenario that is already in the wanted state changes nothing.
+// C6). It changes the one assignment only, so concurrent toggles do not undo each other.
+// A scenario that is already in the wanted state changes nothing and logs nothing.
 func (a *App) SetClientScenario(ctx context.Context, actor Actor, id, scenarioID int64, assigned bool) (Client, error) {
-	cur, err := a.GetClient(ctx, id)
-	if err != nil {
-		return Client{}, err
+	c, changed, err := a.clients.SetScenario(ctx, id, scenarioID, assigned)
+	switch {
+	case errors.Is(err, store.ErrForeignKey):
+		return Client{}, Invalid(map[string]string{"scenarios": "unknown scenario ids: " + strconv.FormatInt(scenarioID, 10)}).wrap(err)
+	case err != nil:
+		return Client{}, StoreError(err, clientNotFound(id), nil)
 	}
-	if slices.Contains(cur.Scenarios, scenarioID) == assigned {
-		return cur, nil
+	if changed {
+		a.clientChanged(ctx, actor, logx.ActionUpdate, c.ID, c.Name)
 	}
-	ids := slices.DeleteFunc(slices.Clone(cur.Scenarios), func(s int64) bool { return s == scenarioID })
-	if assigned {
-		ids = append(ids, scenarioID)
-	}
-	return a.UpdateClient(ctx, actor, id, ClientPatch{Scenarios: httpx.Some(ids)})
+	return clientFromStore(c)
 }
 
 // DeleteClient deletes the client with id, with its assignments, and returns it.
@@ -255,18 +258,40 @@ func tokenHash(token string) []byte {
 	return sum[:]
 }
 
-// clientDraft is a client as it is about to be saved. Scenarios nil means "keep the
-// current assignments".
+// clientDraft is a client as it is about to be saved, without its assignments.
 type clientDraft struct {
 	Name      string
 	Enabled   bool
 	Condition *condition.Condition
-	Scenarios []int64
 }
 
-// clientFields validates d (spec §6.4) and returns the columns to store. Duplicate
-// scenario ids are dropped.
-func (a *App) clientFields(ctx context.Context, d *clientDraft) (store.ClientFields, error) {
+// checkScenarios normalises the scenario ids of a create or an update (sorted, duplicates
+// dropped, never nil) and, if some do not exist, returns the validation message for them.
+// It runs before the client's row is locked, so that clientFields needs no database.
+func (a *App) checkScenarios(ctx context.Context, ids []int64) (norm []int64, unknown string, err error) {
+	norm = slices.Compact(slices.Sorted(slices.Values(ids)))
+	if norm == nil {
+		norm = []int64{}
+	}
+	exist, err := a.scenarios.ExistingScenarioIDs(ctx, norm)
+	if err != nil {
+		return nil, "", err
+	}
+	var missing []string
+	for _, id := range norm {
+		if !exist[id] {
+			missing = append(missing, strconv.FormatInt(id, 10))
+		}
+	}
+	if len(missing) > 0 {
+		unknown = "unknown scenario ids: " + strings.Join(missing, ", ")
+	}
+	return norm, unknown, nil
+}
+
+// clientFields validates d (spec §6.4), with unknown, the message of checkScenarios, if
+// any, and returns the columns to store.
+func clientFields(d clientDraft, unknown string) (store.ClientFields, error) {
 	var v httpx.Validator
 	if v.Required("name", d.Name != "") {
 		v.Length("name", d.Name, 1, maxClientName)
@@ -277,22 +302,8 @@ func (a *App) clientFields(ctx context.Context, d *clientDraft) (store.ClientFie
 	if d.Enabled && condition.Empty(d.Condition) {
 		v.Add("enabled", NeedsConditionMessage)
 	}
-	if d.Scenarios != nil {
-		slices.Sort(d.Scenarios)
-		d.Scenarios = slices.Compact(d.Scenarios)
-		exist, err := a.scenarios.ExistingScenarioIDs(ctx, d.Scenarios)
-		if err != nil {
-			return store.ClientFields{}, err
-		}
-		var unknown []string
-		for _, id := range d.Scenarios {
-			if !exist[id] {
-				unknown = append(unknown, strconv.FormatInt(id, 10))
-			}
-		}
-		if len(unknown) > 0 {
-			v.Add("scenarios", "unknown scenario ids: "+strings.Join(unknown, ", "))
-		}
+	if unknown != "" {
+		v.Add("scenarios", unknown)
 	}
 	if !v.OK() {
 		return store.ClientFields{}, Invalid(v.Details())

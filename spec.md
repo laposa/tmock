@@ -783,6 +783,11 @@ Rules:
   name the path under `condition` (`condition.or[1].cidr`); a node with no or several predicates
   is reported at its own path (`condition.and[0]`). `ip` and `cidr` must not carry an IPv6 zone.
   Revoking a token when there is none is `204`.
+- Found in I07 (concurrency): an update is a read-modify-write, so it locks the client's row
+  (`SELECT … FOR UPDATE`) from the read to the write; overlapping updates of one client run
+  one after the other and none is lost (for example a rename in the UI and an enable by token).
+  The UI's assignment switches and chip ✕ change the one `client_scenarios` row, not the whole
+  list, so toggles sent at once all stay. A toggle that changes nothing logs nothing.
 - Found in I07 (token-or-user): with a token, `{id}` is checked before the body; the field
   check reads only the top-level keys, so a body that is not a JSON object still reaches the
   handler's `400`. The `403` messages are `This token belongs to another client` and

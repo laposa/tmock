@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/laposa/tmock/app-go/internal/app"
@@ -305,3 +306,86 @@ func must[T any](v T, err error) T {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// Concurrent changes to one client are not lost (both read-modify-writes lock the
+// client's row): assignment toggles sent at once all stay, and updates of different
+// fields that overlap both take effect.
+func TestClientConcurrentChanges(t *testing.T) {
+	t.Parallel()
+	a, _, _, _ := newClientApp(t)
+	ctx := context.Background()
+	var ids []int64
+	for i := range 10 {
+		s := must(a.CreateScenario(ctx, ann, app.ScenarioInput{Service: "svc", Name: "r" + strconv.Itoa(i)}))
+		ids = append(ids, s.ID)
+	}
+	headerTest := cond(t, `{"headerMatch":{"header":"x-test","value":"1"}}`)
+
+	for round := range 5 {
+		c := must(a.CreateClient(ctx, ann, app.ClientInput{Name: "c" + strconv.Itoa(round), Condition: headerTest}))
+		var wg sync.WaitGroup
+		for _, id := range ids {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if _, err := a.SetClientScenario(ctx, ann, c.ID, id, true); err != nil {
+					t.Error(err)
+				}
+			}()
+		}
+		// A rename and an enable at the same time, as the edit modal and a token would.
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if _, err := a.UpdateClient(ctx, ann, c.ID, app.ClientPatch{Name: httpx.Some("renamed" + strconv.Itoa(round))}); err != nil {
+				t.Error(err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if _, err := a.UpdateClient(ctx, app.ClientTokenActor(c.ID), c.ID, app.ClientPatch{Enabled: httpx.Some(true)}); err != nil {
+				t.Error(err)
+			}
+		}()
+		wg.Wait()
+		got := must(a.GetClient(ctx, c.ID))
+		if len(got.Scenarios) != len(ids) {
+			t.Errorf("round %d: %d of %d assignments kept", round, len(got.Scenarios), len(ids))
+		}
+		if got.Name != "renamed"+strconv.Itoa(round) || !got.Enabled {
+			t.Errorf("round %d: name %q, enabled %v: an update was lost", round, got.Name, got.Enabled)
+		}
+	}
+}
+
+// A toggle changes the one assignment only; a toggle that changes nothing logs nothing;
+// an unknown scenario or client is an error.
+func TestClientSetScenario(t *testing.T) {
+	t.Parallel()
+	a, logs, sa, sb := newClientApp(t)
+	ctx := context.Background()
+	c := must(a.CreateClient(ctx, ann, app.ClientInput{Name: "toggles", Scenarios: []int64{sa}}))
+
+	got, err := a.SetClientScenario(ctx, ann, c.ID, sb, true)
+	if err != nil || len(got.Scenarios) != 2 {
+		t.Fatalf("assign: %v, %v", got.Scenarios, err)
+	}
+	before := len(logs.All())
+	if _, err := a.SetClientScenario(ctx, ann, c.ID, sb, true); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(logs.All()); n != before {
+		t.Errorf("a toggle that changed nothing logged %d records", n-before)
+	}
+	if got, err := a.SetClientScenario(ctx, ann, c.ID, sa, false); err != nil || len(got.Scenarios) != 1 || got.Scenarios[0] != sb {
+		t.Errorf("remove: %v, %v", got.Scenarios, err)
+	}
+	e := appErr(t, must2(a.SetClientScenario(ctx, ann, c.ID, 999999, true)), app.KindInvalid)
+	if e.Details["scenarios"] != "unknown scenario ids: 999999" {
+		t.Errorf("unknown scenario: %v", e.Details)
+	}
+	appErr(t, must2(a.SetClientScenario(ctx, ann, 999999, sa, true)), app.KindNotFound)
+}
+
+// must2 returns the error of a call whose result is not needed.
+func must2[T any](_ T, err error) error { return err }
