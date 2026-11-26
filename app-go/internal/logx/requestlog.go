@@ -23,11 +23,7 @@ func RequestLog(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		info := &requestInfo{}
-		ctx := context.WithValue(r.Context(), requestInfoKey{}, info)
-		if tc, ok := ParseTraceparent(r.Header.Get("Traceparent")); ok {
-			ctx = ContextWithTrace(ctx, tc)
-		}
-		r = r.WithContext(ctx)
+		r = withTrace(r.WithContext(context.WithValue(r.Context(), requestInfoKey{}, info)))
 		rec := &statusRecorder{ResponseWriter: w}
 		defer func() {
 			// r.Pattern is filled in by the ServeMux that routed the request.
@@ -35,6 +31,23 @@ func RequestLog(logger *slog.Logger, next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(rec, r)
 	})
+}
+
+// Traced parses an incoming traceparent into the request context (spec §2.4.4) and logs
+// nothing. It is for handlers that log their requests themselves, such as the proxy
+// (spec §9.6: proxy requests are logged by the proxy, not twice).
+func Traced(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, withTrace(r))
+	})
+}
+
+// withTrace adds the trace context of r's traceparent header, if valid, to its context.
+func withTrace(r *http.Request) *http.Request {
+	if tc, ok := ParseTraceparent(r.Header.Get("Traceparent")); ok {
+		return r.WithContext(ContextWithTrace(r.Context(), tc))
+	}
+	return r
 }
 
 // requestInfo collects what handlers learn about a request for its log event.

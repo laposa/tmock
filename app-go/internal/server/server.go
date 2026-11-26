@@ -20,8 +20,9 @@ type Options struct {
 	UI http.Handler
 	// API adds the REST routes of spec §6.4. If nil, only the health checks are served.
 	API *api.API
-	// Proxy serves /api/proxy/ (from I09). It gets no security headers and no
-	// cross-origin protection (spec §9.3, §9.4); it applies its own CORS (httpx.ProxyCORS).
+	// Proxy serves /api/proxy/ (from I09). It gets no security headers, no
+	// cross-origin protection (spec §9.3, §9.4) and no request log (it logs its own
+	// requests); it applies its own CORS (httpx.ProxyCORS, from I10).
 	// If nil, /api/proxy/ paths are unknown API routes. It receives the path as sent, so it
 	// must route with its own http.ServeMux, which cleans paths such as /api/proxy/../x.
 	Proxy http.Handler
@@ -33,10 +34,11 @@ type Options struct {
 
 // New returns the handler for the whole application:
 //
-//	request log → panic recovery → /api/proxy/*  → proxy
-//	                             → everything else → security headers → cross-origin protection → routes
+//	/api/proxy/*    → trace context → panic recovery → proxy (which logs its own requests)
+//	everything else → request log → panic recovery → security headers → cross-origin protection → routes
 //
-// The request log is outermost, so it also records panics.
+// The request log is outside the recovery, so it also records panics. Proxy requests are
+// not in the request log: the proxy logs each one as tmock.proxy.request (spec §9.6).
 func New(opts Options) http.Handler {
 	logger := opts.Logger
 	if logger == nil {
@@ -61,14 +63,18 @@ func New(opts Options) http.Handler {
 	}
 	protected := httpx.SecurityHeaders(opts.Production, httpx.CrossOrigin(mux))
 
+	logged := logx.RequestLog(logger, httpx.Recover(logger, protected))
+	if opts.Proxy == nil {
+		return logged
+	}
 	// A prefix check rather than a mux, so the request log's http.route only ever comes
 	// from the mux that actually routed the request.
-	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if opts.Proxy != nil && strings.HasPrefix(r.URL.Path, "/api/proxy/") {
-			opts.Proxy.ServeHTTP(w, r)
+	proxy := logx.Traced(httpx.Recover(logger, opts.Proxy))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/proxy/") {
+			proxy.ServeHTTP(w, r)
 			return
 		}
-		protected.ServeHTTP(w, r)
+		logged.ServeHTTP(w, r)
 	})
-	return logx.RequestLog(logger, httpx.Recover(logger, root))
 }
