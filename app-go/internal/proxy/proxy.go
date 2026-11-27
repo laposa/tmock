@@ -1,8 +1,10 @@
 // Package proxy is the proxy and mock engine at /api/proxy/ (spec §7). It looks the
-// service up in the catalog snapshot and forwards the request to its upstream.
+// service up in the catalog snapshot, finds the matching clients and the winning
+// scenario, and then answers from the scenario alone (skip proxy) or forwards the request
+// to the upstream and modifies its response.
 //
-// I09 forwards every request as it is (spec §7.7, §7.8 without a scenario); client
-// matching, scenario selection and mocking follow in I10.
+// Request conditions (I11) and templates (I12) are not evaluated yet: a scenario with a
+// request condition never applies, and bodies are used verbatim.
 //
 // The package is backend code: standard library only.
 package proxy
@@ -18,6 +20,7 @@ import (
 	"time"
 
 	"github.com/laposa/tmock/app-go/internal/catalog"
+	"github.com/laposa/tmock/app-go/internal/httpx"
 )
 
 // Catalog returns the current catalog snapshot; *catalog.Cache is one.
@@ -33,6 +36,7 @@ type Options struct {
 	APIKey                 string        // SERVICES_API_KEY: sent upstream as Apikey
 	RemoveForwardedHeaders bool          // PROXY_REMOVE_FORWARDED_HEADERS
 	UpstreamTimeout        time.Duration // PROXY_UPSTREAM_TIMEOUT: connect and wait for response headers; 0 = 30s
+	CORSAllowedOrigins     []string      // PROXY_CORS_ALLOWED_ORIGINS; empty reflects any origin (spec §9.5)
 
 	// Transport sends the upstream requests. Nil means a transport of the proxy's own,
 	// built from UpstreamTimeout.
@@ -61,10 +65,10 @@ var restoredHeaders = []string{"X-Forwarded-For", "X-Forwarded-Host", "X-Forward
 
 // Proxy is the handler of /api/proxy/.
 type Proxy struct {
-	opts   Options
-	logger *slog.Logger
-	mux    *http.ServeMux
-	rp     *httputil.ReverseProxy
+	opts    Options
+	logger  *slog.Logger
+	handler http.Handler // CORS around the mux
+	rp      *httputil.ReverseProxy
 }
 
 // New returns the proxy handler.
@@ -86,10 +90,12 @@ func New(opts Options) *Proxy {
 	}
 	// The proxy receives the path as sent (internal/server), so it routes with a mux of
 	// its own, which cleans paths such as /api/proxy/../x by redirecting.
-	p.mux = http.NewServeMux()
-	p.mux.HandleFunc("/api/proxy/{service}", p.serve)
-	p.mux.HandleFunc("/api/proxy/{service}/{rest...}", p.serve)
-	p.mux.HandleFunc("/api/proxy/", p.serve) // no service name: 404
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/proxy/{service}", p.serve)
+	mux.HandleFunc("/api/proxy/{service}/{rest...}", p.serve)
+	mux.HandleFunc("/api/proxy/", p.serve) // no service name: 404
+	// CORS applies to every proxy response, mocked or not; preflights never reach the mux.
+	p.handler = httpx.ProxyCORS(opts.CORSAllowedOrigins, mux)
 	return p
 }
 
@@ -109,7 +115,7 @@ func newTransport(timeout time.Duration) *http.Transport {
 }
 
 // ServeHTTP logs every proxy request (spec §7.9), including the ones the mux answers
-// itself, such as the redirect to a clean path.
+// itself, such as the redirect to a clean path, and CORS preflights.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	rec := &recorder{ResponseWriter: w}
@@ -130,7 +136,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			panic(v)
 		}
 	}()
-	p.mux.ServeHTTP(rec, r)
+	p.handler.ServeHTTP(rec, r)
 }
 
 // exchange is the request-scoped state of one proxy request. The snapshot it points into
@@ -138,7 +144,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type exchange struct {
 	service *catalog.Service
 	rest    string // the escaped path after /api/proxy/{service}/, without the leading /
-	failure error  // the upstream error, if the upstream call failed
+	sel     selection
+	failure error // the upstream error, if the upstream call failed
 }
 
 type exchangeKey struct{}
@@ -163,6 +170,11 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request) {
 	ex := exchangeFrom(r)
 	ex.service = svc
 	ex.rest = restOf(r)
+	ex.sel = selectScenario(svc, matchingClients(snap.Clients(), r), r.Method, requestPath(r))
+	if skipsProxy(ex.sel.scenario) {
+		writeMock(w, ex.sel)
+		return
+	}
 	p.rp.ServeHTTP(w, r)
 }
 
@@ -207,19 +219,16 @@ func (p *Proxy) rewrite(pr *httputil.ProxyRequest) {
 	if p.opts.APIKey != "" {
 		h.Set("Apikey", p.opts.APIKey)
 	}
-	setTmockHeaders(h, StatusProxied)
+	// "mocked" means a scenario applies, even though the request still goes upstream.
+	setTmockHeaders(h, status(ex.sel), ex.sel)
 }
 
-// setTmockHeaders sets x-tmock-status and removes any other x-tmock-* header, so that
-// x-tmock-client and x-tmock-scenario are only ever the ones tmock sets (spec §7.7,
-// §7.8), never copies of what the client or the upstream sent.
-func setTmockHeaders(h http.Header, status string) {
-	for k := range h {
-		if strings.HasPrefix(k, "X-Tmock-") {
-			delete(h, k)
-		}
+// status is the x-tmock-status value for sel.
+func status(sel selection) string {
+	if sel.scenario != nil {
+		return StatusMocked
 	}
-	h.Set(HeaderStatus, status)
+	return StatusProxied
 }
 
 // joinPath appends rest to the upstream's base path: http://h/base + content →
@@ -245,10 +254,16 @@ func joinQuery(base, req string) string {
 	return base + "&" + req
 }
 
-// modifyResponse marks a passed-through response (spec §7.8, no scenario). Status,
-// headers and body are otherwise untouched, and the body is streamed.
+// modifyResponse applies the winning scenario to the upstream response (spec §7.8).
+// Without one, status, headers and body pass through untouched (the body streamed), with
+// only the x-tmock-* headers set.
 func (p *Proxy) modifyResponse(resp *http.Response) error {
-	setTmockHeaders(resp.Header, StatusProxied)
+	ex := exchangeFrom(resp.Request)
+	if ex.sel.scenario == nil {
+		setTmockHeaders(resp.Header, StatusProxied, ex.sel)
+		return nil
+	}
+	modifyUpstream(resp, ex.sel)
 	return nil
 }
 

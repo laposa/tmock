@@ -1,6 +1,6 @@
 // Package condition is the client condition model (spec §6.1, §7.3): a tree of nodes, each
 // with exactly one predicate and an optional "not". It parses and validates conditions and
-// decides whether one is empty. Evaluation against a request arrives with the proxy (I10).
+// decides whether one is empty, and compiles one for evaluation against a request (Match).
 //
 // The package is backend code: standard library only.
 package condition

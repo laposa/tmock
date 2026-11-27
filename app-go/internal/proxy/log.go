@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 // logRequest logs the tmock.proxy.request event (spec §7.9) and, when the upstream call
 // failed, tmock.proxy.upstream_failed first. The message is the line
 //
-//	<ip> <METHOD> <url> <status> <ms>ms <size>
+//	<ip> <METHOD> <url> <status>[ [client <c>; scenario <s>; mocked: status, headers, body[; proxy skipped]]] <ms>ms <size>
 //
 // Header values and bodies are never logged (spec §2.4.3).
 func (p *Proxy) logRequest(r *http.Request, status int, size int64, ex *exchange, d time.Duration) {
@@ -50,8 +51,38 @@ func (p *Proxy) logRequest(r *http.Request, status int, size int64, ex *exchange
 			slog.String(logx.AttrServerAddress, ex.service.Upstream.Hostname()),
 		)
 	}
-	msg := fmt.Sprintf("%s %s %s %d %dms %s", ip, r.Method, r.URL.RequestURI(), status, ms, FormatSize(size))
+	details, detailAttrs := matchDetails(ex.sel)
+	attrs = append(attrs, detailAttrs...)
+	msg := fmt.Sprintf("%s %s %s %d%s %dms %s", ip, r.Method, r.URL.RequestURI(), status, details, ms, FormatSize(size))
 	p.logger.LogAttrs(ctx, slog.LevelInfo, msg, attrs...)
+}
+
+// matchDetails is the bracketed part of the log line and its attributes: the reported
+// client and, when a scenario applies, the scenario, what it mocks and whether the
+// upstream was skipped. Both are empty when no client matched.
+func matchDetails(sel selection) (string, []slog.Attr) {
+	if sel.client == nil {
+		return "", nil
+	}
+	parts := []string{"client " + sel.client.Name}
+	attrs := []slog.Attr{slog.String(logx.AttrClient, sel.client.Name)}
+	if s := sel.scenario; s != nil {
+		mocked := mockedParts(s)
+		skipped := skipsProxy(s)
+		parts = append(parts, "scenario "+s.Name)
+		if len(mocked) > 0 {
+			parts = append(parts, "mocked: "+strings.Join(mocked, ", "))
+		}
+		if skipped {
+			parts = append(parts, "proxy skipped")
+		}
+		attrs = append(attrs,
+			slog.String(logx.AttrScenario, s.Name),
+			slog.Any(logx.AttrMocked, mocked),
+			slog.Bool(logx.AttrProxySkipped, skipped),
+		)
+	}
+	return " [" + strings.Join(parts, "; ") + "]", attrs
 }
 
 func (p *Proxy) logUpstreamFailed(ctx context.Context, ex *exchange) {

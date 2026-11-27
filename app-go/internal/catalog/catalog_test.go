@@ -76,6 +76,10 @@ func TestBuildLeavesOutBrokenRows(t *testing.T) {
 	data := sampleData()
 	data.Services[1].UpstreamURL = "not a url"
 	data.Clients[1].Condition = []byte(`{"bogus":1}`)
+	data.Clients = append(data.Clients,
+		store.CatalogClient{ID: 10, Name: "empty", Condition: []byte(`{"and":[]}`)},
+		store.CatalogClient{ID: 11, Name: "bad regex", Condition: []byte(`{"headerRegex":{"header":"X","value":"("}}`)},
+		store.CatalogClient{ID: 12, Name: "none"})
 	logs, logger := logxtest.New()
 	snap := Build(data, nil, logger)
 	if _, ok := snap.Service("orders"); ok {
@@ -84,8 +88,8 @@ func TestBuildLeavesOutBrokenRows(t *testing.T) {
 	if len(snap.Clients()) != 1 {
 		t.Errorf("clients = %+v", snap.Clients())
 	}
-	if n := len(logs.All()); n != 2 {
-		t.Errorf("%d warnings, want 2", n)
+	if n := len(logs.All()); n != 5 {
+		t.Errorf("%d warnings, want 5", n)
 	}
 }
 

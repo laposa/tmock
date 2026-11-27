@@ -918,6 +918,12 @@ Each condition node has exactly one predicate, plus an optional `not` that negat
   then the first entry of `x-forwarded-for`, then the socket's remote address (without the port),
   trimmed. Header values that are not IP addresses are skipped, so they never reach logs or conditions.
   IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`) are normalised to IPv4 on both sides.
+- Found in I10: conditions are compiled once per catalog build (`condition.Compile` →
+  `Matcher`: regexes, addresses and prefixes parsed), not per request. "Both sides" includes
+  prefixes: `::ffff:10.0.0.0/104` is `10.0.0.0/8`. An IPv4 prefix never contains an IPv6
+  client. `headerMatch` compares the value case-sensitively. An enabled client whose
+  condition is empty or does not compile (which `internal/app` prevents) is left out of the
+  catalog with a warning: an empty condition would match every request.
 
 ### 7.4 Request conditions (scenario `requestCondition`)
 
@@ -966,6 +972,11 @@ Given the service `S`, the matching clients `C` (in id order) and `rest`, the pa
 4. The **reported client** is the first client in `C` that has the winning scenario assigned. When
    no scenario wins, it is the first client in `C`.
 
+Found in I10: `reqPath` is the decoded path (`a%20b` is `a b`); the method is compared
+exactly, as HTTP methods are case-sensitive. Until I11 evaluates request conditions, a
+scenario with a `requestCondition` is skipped, so it never applies to a request its
+condition might exclude.
+
 ### 7.6 Short-circuit (skip proxy)
 
 If the winning scenario has `skipProxy = true` (which implies a body, §6.4), the upstream is never
@@ -975,6 +986,11 @@ contacted:
 - headers: the scenario's `responseHeaders` (a `null` value is ignored here), then the
   content-type fallback (§7.8 step 4), then the `x-tmock-*` headers;
 - body: the rendered template (§8).
+
+Found in I10: a `responseCode` of `204` or `304` is sent without a body and without
+`Content-Length`. A `1xx` code cannot end a response (Go sends it as an informational
+response followed by `200`), so such a scenario is of no use; this is not rejected on save.
+Until I12 the body is sent verbatim, template marker included.
 
 ### 7.7 Upstream forwarding
 
@@ -1027,6 +1043,11 @@ contacted:
   5. Set the `x-tmock-*` headers.
 - Without a replaced body, the upstream body is streamed untouched (compressed bodies stay
   compressed).
+- Found in I10: step 4 applies only when tmock writes the body (step 3, or §7.6). An upstream
+  body is never read to guess its type: it stays streamed, and possibly compressed. The
+  `x-tmock-*` headers of step 5 replace any `x-tmock-*` a scenario's `responseHeaders` set.
+  Client and scenario names may contain any text, so control characters (line breaks) become
+  spaces in `x-tmock-client` and `x-tmock-scenario`, as a header value cannot hold them.
 
 ### 7.9 Proxy log line
 
@@ -1042,6 +1063,11 @@ human-readable (`0B`, `512B`, `1.5KB`, `2MB`).
 This line is the message of the `tmock.proxy.request` event; the same data is attached as
 structured attributes (§2.4.2). An upstream failure additionally logs
 `tmock.proxy.upstream_failed` with the error.
+
+Found in I10: with no matching client there is no bracket; with a client but no scenario it
+is `[client <c>]`; `mocked:` is left out when the scenario changes nothing in the response.
+`tmock.proxy_skipped` is present (`true`/`false`) whenever a scenario applies, and
+`tmock.mocked` is an array. CORS preflights are logged as proxy requests too.
 
 Found in I09: a panic is logged with the `500` the client gets, an upgrade with its `101`. The
 size is the number of body bytes written to the client (as sent, so a
@@ -1156,7 +1182,8 @@ CSP that allows the CDN.
 - **API and UI:** no CORS headers. The dashboard is same-origin, and automation is not a browser.
 - **Proxy:** browser apps under test call the proxy cross-origin, so the proxy reflects the request
   `Origin` with `Access-Control-Allow-Credentials: true` and `Vary: Origin`. When
-  `PROXY_CORS_ALLOWED_ORIGINS` is set, only listed origins are reflected. Preflight requests
+  `PROXY_CORS_ALLOWED_ORIGINS` is set, only listed origins are reflected. Found in I10: this
+  applies to every proxy response, mocked, proxied or `404`. Preflight requests
   (`OPTIONS` with `Access-Control-Request-Method`) get `204`, the method list
   `GET,HEAD,PUT,PATCH,POST,DELETE` and the requested headers, and are not forwarded upstream. CORS
   headers sent by the upstream take precedence over tmock's.
@@ -2051,7 +2078,7 @@ Update this table as issues are created and closed.
 | I07 | Clients, assignments, tokens | #49 | In review | `internal/condition` (model, parse, validate, empty rule; evaluation in I10); tokens are SHA-256 only; `tmock.client`, `tmock.client.id`, `tmock.clients.disabled`; the table reloads on `clients:changed`; Regenerate asks; chip, chip list, icon button, button group and copy field components; `dbtest` caps parallel DB tests per package |
 | I08 | Condition builder, accounts (M1) | | In review | `internal/condition/builder` (form ↔ tree ↔ condition; `edit=<op>:<path>` buttons that also work without JavaScript); user use cases with the admin rules under a table lock; Accounts and My Account; placeholder pages removed; the modal Close button works inside forms with their own Alpine component; builder edits are `hx-sync` drop, so a quick second edit cannot undo the first; the unsaved-changes guard is shared (`unsavedGuard`) and covers the builder; saves that change no user field are not written or logged; after a failed rename the client's Delete confirmation names the client as stored; the per-service tables of the scenario list and the assignment modal line up (`TableProps.Widths`: fixed column widths from size classes, since the CSP allows no inline styles); hidden input, menu, inline error, condition group and item components |
 | I09 | Proxy core and catalog cache | | In review | `internal/catalog` (immutable snapshot, TTL, one rebuild at a time, invalidation counter so a change during a rebuild is not lost, old snapshot kept on failure); `store.Catalog` reads it in one `REPEATABLE READ` transaction; `app.Options.Catalog` invalidated next to `tmock.entity.changed`; `internal/proxy` on `ReverseProxy.Rewrite`, putting back the client's `X-Forwarded-*` that `ReverseProxy` strips; no transport compression; `PROXY_UPSTREAM_TIMEOUT` for connect and response headers; proxy requests skip the request log (`logx.Traced`); `cmd/echo-upstream`; the rebuild lock is a channel for `synctest` |
-| I10 | Matching and mocking | | Planned | |
+| I10 | Matching and mocking | | In review | `condition.Compile`/`Matcher` (compiled once per catalog build; mapped prefixes unmapped); empty or broken enabled conditions left out of the catalog; scenarios with a request condition skipped until I11; content-type fallback only for bodies tmock writes; `x-tmock-*` always tmock's own, names made header-safe; 204/304 mocks without a body; proxy CORS wraps every proxy response; `[client …; scenario …; mocked: …]` in the log, `tmock.mocked` and `tmock.proxy_skipped` |
 | I11 | Request-condition expressions | | Planned | |
 | I12 | Liquid template subset | | Planned | |
 | I13 | Proxy hardening (M2) | | Planned | |

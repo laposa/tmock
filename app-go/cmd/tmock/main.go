@@ -152,6 +152,7 @@ func runServer(ctx context.Context, logger *slog.Logger, cfg config.Config, pool
 			APIKey:                 cfg.ServicesAPIKey,
 			RemoveForwardedHeaders: cfg.ProxyRemoveForwardedHeaders,
 			UpstreamTimeout:        cfg.ProxyUpstreamTimeout,
+			CORSAllowedOrigins:     cfg.ProxyCORSAllowedOrigins,
 		}),
 		Logger:     logger,
 		Production: cfg.Production(),

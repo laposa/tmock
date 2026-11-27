@@ -67,6 +67,9 @@ const (
 
 	AttrClientsDisabled = "tmock.clients.disabled" // how many clients disable-all disabled
 
+	AttrMocked       = "tmock.mocked"        // what a scenario changed: status, headers, body
+	AttrProxySkipped = "tmock.proxy_skipped" // the scenario answered without the upstream
+
 	AttrCatalogServices  = "tmock.catalog.services"
 	AttrCatalogScenarios = "tmock.catalog.scenarios"
 	AttrCatalogClients   = "tmock.catalog.clients"

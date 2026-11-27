@@ -11,6 +11,7 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -56,7 +57,8 @@ type Client struct {
 	ID        int64
 	Name      string
 	Condition *condition.Condition
-	Scenarios map[int64]bool // the ids of its assigned scenarios
+	Match     *condition.Matcher // Condition compiled
+	Scenarios map[int64]bool     // the ids of its assigned scenarios
 }
 
 // Service returns the service whose path is exactly path (spec §7.1).
@@ -75,9 +77,9 @@ func (s *Snapshot) Counts() (services, scenarios, clients int) {
 
 // Build turns the catalog data into a snapshot. overrides maps service paths to the
 // upstream URL to use instead of the stored one (SERVICES_UPSTREAM_OVERRIDES). A service
-// whose upstream URL does not parse, or a client whose condition does not, cannot have
-// been saved by internal/app; it is left out and reported to logger rather than failing
-// the whole catalog.
+// whose upstream URL does not parse, or a client whose condition does not compile or is
+// empty, cannot have been saved by internal/app; it is left out and reported to logger
+// rather than failing the whole catalog. (An empty condition would match every request.)
 func Build(data store.CatalogData, overrides map[string]string, logger *slog.Logger) *Snapshot {
 	if logger == nil {
 		logger = slog.Default()
@@ -108,15 +110,22 @@ func Build(data store.CatalogData, overrides map[string]string, logger *slog.Log
 	}
 	for _, c := range data.Clients {
 		cond, err := condition.Parse(string(c.Condition))
+		var match *condition.Matcher
+		if err == nil && condition.Empty(cond) {
+			err = errors.New("it is empty")
+		}
+		if err == nil {
+			match, err = condition.Compile(cond)
+		}
 		if err != nil {
-			logger.Warn(fmt.Sprintf("catalog: client %d left out: its condition does not parse: %v", c.ID, err))
+			logger.Warn(fmt.Sprintf("catalog: client %d left out: its condition cannot be used: %v", c.ID, err))
 			continue
 		}
 		ids := make(map[int64]bool, len(c.Scenarios))
 		for _, id := range c.Scenarios {
 			ids[id] = true
 		}
-		snap.clients = append(snap.clients, Client{ID: c.ID, Name: c.Name, Condition: cond, Scenarios: ids})
+		snap.clients = append(snap.clients, Client{ID: c.ID, Name: c.Name, Condition: cond, Match: match, Scenarios: ids})
 	}
 	return snap
 }
