@@ -99,6 +99,7 @@ func TestScenarioEndpointErrors(t *testing.T) {
 		{"skipProxy needs a body", "POST", "/api/scenario", `{"service":"svc","name":"x","skipProxy":true}`, 400, `"skipProxy":"requires a response body"`},
 		{"bad method", "POST", "/api/scenario", `{"service":"svc","name":"x","requestMethod":"FETCH"}`, 400, `"requestMethod":"must be one of`},
 		{"bad condition", "POST", "/api/scenario", `{"service":"svc","name":"x","requestCondition":"$request.body.a =="}`, 400, `"requestCondition":"column 19: expected a value but found end of condition"`},
+		{"bad template", "POST", "/api/scenario", `{"service":"svc","name":"x","responseBody":"<% TEMPLATE: LiquidJS %>{{ 1 | }}"}`, 400, `"responseBody":"line 1, column 32: expected a filter name after \"|\", but found nothing"`},
 		{"bad code", "POST", "/api/scenario", `{"service":"svc","name":"x","responseCode":42}`, 400, `"responseCode":"must be between 100 and 599"`},
 		{"header value not a string", "POST", "/api/scenario", `{"service":"svc","name":"x","responseHeaders":{"X-A":1}}`, 400, `"responseHeaders.X-A":"must be a string"`},
 		{"headers not an object", "POST", "/api/scenario", `{"service":"svc","name":"x","responseHeaders":["a"]}`, 400, `"responseHeaders":"must be an object"`},

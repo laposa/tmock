@@ -1,9 +1,8 @@
 // Package proxy is the proxy and mock engine at /api/proxy/ (spec §7). It looks the
 // service up in the catalog snapshot, finds the matching clients and the winning
 // scenario, and then answers from the scenario alone (skip proxy) or forwards the request
-// to the upstream and modifies its response.
-//
-// Templates (I12) are not rendered yet: bodies are used verbatim.
+// to the upstream and modifies its response. A body that is a template is rendered on
+// every request (internal/liquid).
 //
 // The package is backend code: standard library only.
 package proxy
@@ -182,7 +181,7 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if skipsProxy(ex.sel.scenario) {
-		writeMock(w, ex.sel)
+		writeMock(w, ex.sel, p.responseBody(r.Context(), ex.sel.scenario))
 		return
 	}
 	p.rp.ServeHTTP(w, r)
@@ -273,7 +272,8 @@ func (p *Proxy) modifyResponse(resp *http.Response) error {
 		setTmockHeaders(resp.Header, StatusProxied, ex.sel)
 		return nil
 	}
-	modifyUpstream(resp, ex.sel)
+	// Rendered once the upstream has answered, so 'now' is the time of the response.
+	modifyUpstream(resp, ex.sel, p.responseBody(resp.Request.Context(), ex.sel.scenario))
 	return nil
 }
 

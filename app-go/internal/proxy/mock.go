@@ -2,13 +2,18 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/laposa/tmock/app-go/internal/catalog"
+	"github.com/laposa/tmock/app-go/internal/liquid"
+	"github.com/laposa/tmock/app-go/internal/logx"
 )
 
 // mockedParts lists what scenario s changes in a response, for the log (spec §7.9):
@@ -27,9 +32,30 @@ func mockedParts(s *catalog.Scenario) []string {
 	return out
 }
 
-// responseBody is the body a scenario writes. Templates are rendered from I12; until then
-// the body is used verbatim, marker included.
-func responseBody(s *catalog.Scenario) []byte {
+// responseBody is the body scenario s writes, nil when it has none. A template is
+// rendered on every request (spec §8.1), so 'now' is always current. When the template
+// fails, at parse time (stored before templates were checked) or now, the failure is
+// logged as tmock.template.render_failed and the body is sent as stored, unrendered.
+func (p *Proxy) responseBody(ctx context.Context, s *catalog.Scenario) []byte {
+	if s.ResponseBody == nil {
+		return nil
+	}
+	err := s.TemplateErr
+	if err == nil && s.Template != nil {
+		out, rerr := s.Template.Render(liquid.Options{})
+		if rerr == nil {
+			return []byte(out)
+		}
+		err = rerr
+	}
+	if err != nil {
+		p.logger.LogAttrs(ctx, slog.LevelWarn,
+			fmt.Sprintf("template of scenario %q failed, body sent unrendered: %v", headerSafe(s.Name), err),
+			slog.String(logx.AttrEventName, logx.EventTemplateFailed),
+			slog.String(logx.AttrScenario, s.Name),
+			slog.String(logx.AttrExceptionMessage, err.Error()),
+		)
+	}
 	return []byte(*s.ResponseBody)
 }
 
@@ -41,10 +67,9 @@ func skipsProxy(s *catalog.Scenario) bool {
 
 // writeMock answers the request from the scenario alone (spec §7.6): its status (200 when
 // unset), its headers (a null value is ignored), the content-type fallback, the
-// x-tmock-* headers and the body.
-func writeMock(w http.ResponseWriter, sel selection) {
+// x-tmock-* headers and the body (the rendered one, from responseBody).
+func writeMock(w http.ResponseWriter, sel selection, body []byte) {
 	s := sel.scenario
-	body := responseBody(s)
 	h := w.Header()
 	for name, v := range s.ResponseHeaders {
 		if v != nil {
@@ -90,7 +115,9 @@ func bodyAllowed(status int) bool {
 //
 // An upgrade (101 Switching Protocols) gets only the headers: its body is the upgraded
 // connection, and a new status would break the upgrade.
-func modifyUpstream(resp *http.Response, sel selection) {
+//
+// body is the scenario's body as responseBody renders it, nil when it has none.
+func modifyUpstream(resp *http.Response, sel selection, body []byte) {
 	s := sel.scenario
 	h := resp.Header
 	if resp.StatusCode == http.StatusSwitchingProtocols {
@@ -108,8 +135,7 @@ func modifyUpstream(resp *http.Response, sel selection) {
 		resp.StatusCode = *s.ResponseCode
 		resp.Status = strconv.Itoa(resp.StatusCode) + " " + http.StatusText(resp.StatusCode)
 	}
-	if s.ResponseBody != nil {
-		body := responseBody(s)
+	if body != nil {
 		_ = resp.Body.Close()
 		replaceBody(resp, body)
 		h.Del("Etag")

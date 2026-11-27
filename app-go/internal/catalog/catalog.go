@@ -18,6 +18,7 @@ import (
 
 	"github.com/laposa/tmock/app-go/internal/condition"
 	"github.com/laposa/tmock/app-go/internal/expr"
+	"github.com/laposa/tmock/app-go/internal/liquid"
 	"github.com/laposa/tmock/app-go/internal/store"
 )
 
@@ -51,7 +52,12 @@ type Scenario struct {
 	ResponseCode     *int
 	ResponseHeaders  map[string]*string
 	ResponseBody     *string
-	SkipProxy        bool
+	// Template is ResponseBody parsed, when it is a template (spec §8.1); nil otherwise.
+	// TemplateErr is why a body that is a template does not parse; the proxy then sends
+	// it unrendered.
+	Template    *liquid.Template
+	TemplateErr error
+	SkipProxy   bool
 }
 
 // Client is an enabled client.
@@ -82,7 +88,9 @@ func (s *Snapshot) Counts() (services, scenarios, clients int) {
 // whose upstream URL does not parse, a scenario whose request condition does not parse,
 // or a client whose condition does not compile or is empty, cannot have been saved by
 // internal/app; it is left out and reported to logger rather than failing the whole
-// catalog. (An empty condition would match every request.)
+// catalog. (An empty condition would match every request.) A template body that does not
+// parse is reported too, but its scenario is kept: the proxy sends the body unrendered,
+// as it does when rendering fails (spec §8.1).
 func Build(data store.CatalogData, overrides map[string]string, logger *slog.Logger) *Snapshot {
 	if logger == nil {
 		logger = slog.Default()
@@ -109,10 +117,18 @@ func Build(data store.CatalogData, overrides map[string]string, logger *slog.Log
 					continue
 				}
 			}
+			var tpl *liquid.Template
+			var tplErr error
+			if sc.ResponseBody != nil {
+				if tpl, tplErr = liquid.ParseBody(*sc.ResponseBody); tplErr != nil {
+					logger.Warn(fmt.Sprintf("catalog: scenario %d: its template does not parse and is sent unrendered: %v", sc.ID, tplErr))
+				}
+			}
 			svc.Scenarios = append(svc.Scenarios, Scenario{
 				ID: sc.ID, Name: sc.Name,
 				RequestMethod: sc.RequestMethod, RequestPath: sc.RequestPath, RequestCondition: sc.RequestCondition, Condition: cond,
 				ResponseCode: sc.ResponseCode, ResponseHeaders: sc.ResponseHeaders, ResponseBody: sc.ResponseBody,
+				Template: tpl, TemplateErr: tplErr,
 				SkipProxy: sc.SkipProxy,
 			})
 		}

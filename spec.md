@@ -1023,7 +1023,9 @@ contacted:
 Found in I10: a `responseCode` of `204` or `304` is sent without a body and without
 `Content-Length`. A `1xx` code cannot end a response (Go sends it as an informational
 response followed by `200`), so such a scenario is of no use; this is not rejected on save.
-Until I12 the body is sent verbatim, template marker included.
+Found in I12: a template body is rendered when the response is written: for a skip-proxy
+scenario at once, otherwise once the upstream has answered, so `'now'` is the time of the
+response. The content-type fallback looks at the rendered body.
 
 ### 7.7 Upstream forwarding
 
@@ -1166,6 +1168,39 @@ request for an unknown service is logged too, without `tmock.service` and `serve
 - **Undefined** variables and filters render as empty strings.
 - **Number formatting:** integers have no decimal point; floats use the shortest round-trip form.
 
+Found in I12:
+
+- **Errors.** Save-time errors read `line 2, column 7: …`, counted in characters from 1 in
+  the body as stored, marker included (the editor shows the body with it). A runtime
+  failure sends the body **as stored, marker included**, as the legacy app did, and logs
+  `tmock.template.render_failed`. Templates are parsed once per catalog build; one stored
+  before I12 (or imported) that does not parse keeps its scenario, and every request to it
+  takes the runtime fallback (the catalog build also warns).
+- **What can fail at run time:** `divided_by` and `modulo` by zero, `url_decode` of a bad
+  escape, and the limits: 1,000,000 steps (tags and outputs run, loop iterations, array
+  elements made), 16 MB of strings produced, blocks and `[ ]` nested 64 deep (a parse
+  error). The slowest template within the limits takes about 80 ms to render. A for loop
+  over a range does not allocate the range.
+- **Values,** following LiquidJS where Ruby Liquid differs, except where noted:
+  - only `nil` and `false` are false (`""` and `0` are true); `==` never converts (`"1" == 1`
+    is false, `1 == 1.0` is true); `<`, `>`, `<=`, `>=` compare two numbers or two strings,
+    and are false for anything else;
+  - the math filters read numeric strings as numbers and anything else as `0` (Ruby; LiquidJS
+    gives `NaN`); integer results that overflow become floats; `divided_by` of two integers
+    rounds down (`-7 | divided_by: 2` is `-4`), `modulo` keeps the sign of the input;
+  - floats print as JavaScript does: `3.0` is `3`, `2^63` is `9223372036854776000`;
+  - strings take backslash escapes (`\n`, `\t`, `\"`, …); `first`/`last` of a string are its
+    first/last character; `case` renders the first matching `when` only;
+  - an unknown filter renders as an empty string and is not a save-time error.
+- **`date`:** `'now'` and `'today'` are read once per render (both are the current time);
+  `YYYY-MM-DD` is midnight in the local zone (LiquidJS reads it as UTC midnight, which shows
+  as the day before in zones west of UTC); RFC 3339 times are shown in the local zone; any
+  other input, and an empty format, return the input unchanged; an unknown directive is
+  written as it is. `time/tzdata` is imported by `internal/liquid` itself, so every binary
+  that renders templates has the zone database.
+- **Not supported** (a save-time error): `{% # %}` comments, `echo`, `liquid`,
+  `increment`, `decrement`, `cycle`, `tablerow`, `include`, `render`; nor `forloop.parentloop`.
+
 ### 8.3 Examples that MUST work (from the legacy README and test seed)
 
 ```liquid
@@ -1178,6 +1213,10 @@ request for an unknown service is logged too, without `tmock.service` and `serve
 Table-driven cases with hand-checked expected output live in `internal/liquid/testdata/cases.txt`.
 Cases involving `now` are checked structurally (format, and within ±2 seconds). When a case is in
 doubt, the expected output MAY be cross-checked by hand with LiquidJS; no generator script is kept.
+
+Found in I12: `cases.txt` renders with a fixed clock (2024-02-29T13:05:09.123Z, shown in
+UTC), so its date cases are exact; the §8.3 examples are also checked against the real
+clock, structurally, in `liquid_test.go`. Error cases give the expected message.
 
 ---
 
@@ -2131,7 +2170,7 @@ Update this table as issues are created and closed.
 | I09 | Proxy core and catalog cache | | In review | `internal/catalog` (immutable snapshot, TTL, one rebuild at a time, invalidation counter so a change during a rebuild is not lost, old snapshot kept on failure); `store.Catalog` reads it in one `REPEATABLE READ` transaction; `app.Options.Catalog` invalidated next to `tmock.entity.changed`; `internal/proxy` on `ReverseProxy.Rewrite`, putting back the client's `X-Forwarded-*` that `ReverseProxy` strips; no transport compression; `PROXY_UPSTREAM_TIMEOUT` for connect and response headers; proxy requests skip the request log (`logx.Traced`); `cmd/echo-upstream`; the rebuild lock is a channel for `synctest` |
 | I10 | Matching and mocking | | In review | `condition.Compile`/`Matcher` (compiled once per catalog build; mapped prefixes unmapped); empty or broken enabled conditions left out of the catalog; scenarios with a request condition skipped until I11; content-type fallback only for bodies tmock writes; `x-tmock-*` always tmock's own, names made header-safe; 204/304 mocks without a body; proxy CORS wraps every proxy response; `[client …; scenario …; mocked: …]` in the log, `tmock.mocked` and `tmock.proxy_skipped` |
 | I11 | Request-condition expressions | | In review | `internal/expr` (lexer, recursive-descent parser with positions, evaluator; depth limit 64; fuzzed); numbers exact to 512 bits; `$request.path` is the full path; body JSON also without a content type; parsed once per catalog build, a broken stored condition leaves its scenario out; the condition is evaluated last and the body read lazily, buffered bodies forwarded with `Content-Length`; save errors are `column N: …` (in the text as written) next to the field; framing headers in scenarios noted for I13 |
-| I12 | Liquid template subset | | Planned | |
+| I12 | Liquid template subset | | In review | `internal/liquid` (tokenizer with whitespace control, raw and nested comments; parser with line and column; renderer bounded by steps, bytes and depth; fuzzed); positions in the body as stored, marker included; a failed render sends the body as stored and logs `tmock.template.render_failed`; templates parsed once per catalog build, a stored broken one keeps its scenario and takes the fallback; rendered when the response is written; `time/tzdata` in `internal/liquid`, tested with `TZ=Europe/Dublin` in a child process; `YYYY-MM-DD` is local midnight |
 | I13 | Proxy hardening (M2) | | Planned | |
 | I14 | OpenAPI and swagger | | Planned | |
 | I15 | Legacy import | | Planned | |

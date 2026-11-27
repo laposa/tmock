@@ -12,6 +12,7 @@ import (
 
 	"github.com/laposa/tmock/app-go/internal/expr"
 	"github.com/laposa/tmock/app-go/internal/httpx"
+	"github.com/laposa/tmock/app-go/internal/liquid"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/store"
 )
@@ -252,6 +253,13 @@ func (a *App) scenarioFields(ctx context.Context, d *scenarioDraft) (store.Scena
 	}
 	if c := d.ResponseCode; c != nil {
 		v.Check(*c >= 100 && *c <= 599, "responseCode", "must be between 100 and 599")
+	}
+	if b := d.ResponseBody; b != nil {
+		// A template's syntax is checked here, "line 2, column 7: …" in the body as
+		// written, marker included (spec §8.1).
+		if _, err := liquid.ParseBody(*b); err != nil {
+			v.Add("responseBody", err.Error())
+		}
 	}
 	if msg := headersProblem(d.ResponseHeaders); msg != "" {
 		v.Add("responseHeaders", msg)

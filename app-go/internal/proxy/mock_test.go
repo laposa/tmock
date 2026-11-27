@@ -4,16 +4,20 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/laposa/tmock/app-go/internal/catalog"
+	"github.com/laposa/tmock/app-go/internal/liquid"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/logx/logxtest"
 	"github.com/laposa/tmock/app-go/internal/store"
@@ -287,14 +291,80 @@ func TestProxyCORS(t *testing.T) {
 	}
 }
 
-// The mocked body is used verbatim before I12, template marker included.
-func TestTemplateNotRenderedYet(t *testing.T) {
-	body := "<% TEMPLATE: LiquidJS %>{{ 1 | plus: 1 }}"
+// Spec §7.6, §8: a template body is rendered on every request, so 'now' is current.
+func TestTemplateRendered(t *testing.T) {
+	body := liquid.Marker + `{"n": {{ 1 | plus: 1 }}, "at": "{{ 'now' | date: "%s%L" }}"}`
+	logs, logger := logxtest.New()
 	p := New(Options{Catalog: mockCatalog("http://upstream.invalid", store.Scenario{Name: "t", SkipProxy: true, ResponseBody: sp(body)}),
+		Logger: logger})
+	var first string
+	for i := range 2 {
+		before := time.Now().UnixMilli()
+		rec := do(p, "GET", "/api/proxy/svc/", nil, "X-Real-Ip", "10.0.0.1")
+		var got struct {
+			N  int    `json:"n"`
+			At string `json:"at"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.N != 2 {
+			t.Fatalf("body = %q (%v)", rec.Body, err)
+		}
+		if at, _ := strconv.ParseInt(got.At, 10, 64); at < before || at > time.Now().UnixMilli() {
+			t.Errorf("now = %s, want between %d and now", got.At, before)
+		}
+		if rec.Header().Get("Content-Type") != "application/json" || rec.Header().Get("Content-Length") != strconv.Itoa(rec.Body.Len()) {
+			t.Errorf("headers %v", rec.Header())
+		}
+		if i == 0 {
+			first = got.At
+			time.Sleep(5 * time.Millisecond)
+		} else if got.At == first {
+			t.Errorf("now did not change between requests: %s", got.At)
+		}
+	}
+	if ev := logs.Events(logx.EventTemplateFailed); len(ev) != 0 {
+		t.Errorf("failures logged: %+v", ev)
+	}
+}
+
+// A template body replaces the upstream's body too, rendered.
+func TestTemplateRenderedOnUpstreamResponse(t *testing.T) {
+	up := newFakeUpstream(t, "application/json")
+	p := New(Options{Catalog: mockCatalog(up.URL, store.Scenario{Name: "t", ResponseBody: sp(liquid.Marker + "{{ 'a' | upcase }}")}),
 		Logger: slog.New(slog.DiscardHandler)})
 	rec := do(p, "GET", "/api/proxy/svc/", nil, "X-Real-Ip", "10.0.0.1")
-	if got, _ := io.ReadAll(rec.Body); string(got) != body {
-		t.Errorf("body = %q", got)
+	if up.calls.Load() != 1 || rec.Body.String() != "A" {
+		t.Errorf("calls %d, body %q", up.calls.Load(), rec.Body)
+	}
+}
+
+// Spec §8.1: a template that fails at request time is logged, and the body is sent as
+// stored; so is one stored before templates were checked, which does not parse.
+func TestTemplateFallback(t *testing.T) {
+	for _, tc := range []struct{ name, body, msg string }{
+		{"render error", liquid.Marker + "{{ 1 | divided_by: 0 }}", "line 1, column 32: divided_by: division by zero"},
+		{"parse error", liquid.Marker + "{% if %}", "line 1, column 31: expected a value but found nothing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logs, logger := logxtest.New()
+			p := New(Options{Catalog: mockCatalog("http://upstream.invalid", store.Scenario{Name: "bad\nname", SkipProxy: true, ResponseBody: sp(tc.body)}),
+				Logger: logger})
+			rec := do(p, "GET", "/api/proxy/svc/", nil, "X-Real-Ip", "10.0.0.1")
+			if rec.Code != 200 || rec.Body.String() != tc.body || rec.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
+				t.Errorf("got %d %q %v", rec.Code, rec.Body, rec.Header())
+			}
+			ev := logs.Events(logx.EventTemplateFailed)
+			if len(ev) != 1 {
+				t.Fatalf("events %+v", logs.All())
+			}
+			r := ev[0]
+			if r.Level != slog.LevelWarn || r.Attrs[logx.AttrScenario] != "bad\nname" || r.Attrs[logx.AttrExceptionMessage] != tc.msg ||
+				r.Message != `template of scenario "bad name" failed, body sent unrendered: `+tc.msg {
+				t.Errorf("record %+v", r)
+			}
+			if len(logs.Events(logx.EventProxyRequest)) != 1 {
+				t.Error("the request was not logged")
+			}
+		})
 	}
 }
 
