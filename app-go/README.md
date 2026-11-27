@@ -4,12 +4,13 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I09** (proxy core). You can log in and manage services, scenarios,
+- **Status:** iteration **I10** (matching and mocking). You can log in and manage services, scenarios,
   clients (with the condition builder, scenario assignments and client tokens), and, as an
   admin, user accounts; every user can edit their own account. The REST API has login,
   logout, `me` and CRUD on `/api/service`, `/api/scenario`, `/api/client` (with client tokens)
-  and `/api/user` (with `/api/user/profile`). `/api/proxy/{service}/…` forwards every request
-  to the service's upstream; client matching and mocking follow in I10–I13. Progress is
+  and `/api/user` (with `/api/user/profile`). `/api/proxy/{service}/…` matches clients by
+  their conditions, picks a scenario and mocks the response (or forwards the request
+  unchanged). Request conditions (I11) and templates (I12) are not evaluated yet. Progress is
   tracked in spec §16.
 
 ## Prerequisites
@@ -117,8 +118,26 @@ curl -i 'localhost:3000/api/proxy/echo/a/b?x=1'   # echo shows "url": "/base/a/b
 curl -i localhost:3000/api/proxy/nope              # 404 Service not found
 ```
 
+Mocking a response, with echo-upstream running as above:
+
+1. **Scenarios → Add Scenario**: service "echo", name "boom"; switch on Code (`500`) and Body
+   (`{"error":"boom"}`).
+2. **Clients → Add Client** "local", then **Conditions** → Add Expression → IP Address
+   `127.0.0.1` → Save; switch the client on, and assign "boom" with ⊕.
+3. `curl -i localhost:3000/api/proxy/echo/a` answers `500 {"error":"boom"}` with
+   `X-Tmock-Status: mocked`, `X-Tmock-Client: local` and `X-Tmock-Scenario: boom`; the
+   echo-upstream console shows that the upstream was still called. Switch on **Skip Proxy**
+   and the upstream sees nothing. Switch the client off and the request is proxied again.
+4. A browser preflight:
+   `curl -i -X OPTIONS -H 'Origin: https://app.example' -H 'Access-Control-Request-Method: POST' localhost:3000/api/proxy/echo/a`
+   answers `204` with the CORS headers (`PROXY_CORS_ALLOWED_ORIGINS` limits the origins).
+
+A scenario applies when one of the matching clients has it assigned and its Method and
+Path (compared case-insensitively, without the query) fit; the first such scenario in name
+order wins. A scenario with a request Condition never applies until I11.
+
 Each proxy request is logged once, as `tmock.proxy.request` (`<ip> <METHOD> <url> <status>
-<ms>ms <size>`); a failing upstream answers `502 Bad Gateway` and logs
+[client …; scenario …; mocked: …] <ms>ms <size>`); a failing upstream answers `502 Bad Gateway` and logs
 `tmock.proxy.upstream_failed`. The proxy reads a cached catalog of services, scenarios and
 clients (`CACHE_TTL`, default `10m`; `DISABLE_CACHE=true` reads the database on every
 request). Every change made in the dashboard or the REST API invalidates it, so the next proxy
