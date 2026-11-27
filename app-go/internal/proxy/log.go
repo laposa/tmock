@@ -64,12 +64,13 @@ func matchDetails(sel selection) (string, []slog.Attr) {
 	if sel.client == nil {
 		return "", nil
 	}
-	parts := []string{"client " + sel.client.Name}
+	// Names may contain any text; a line break must not start a fake log line.
+	parts := []string{"client " + headerSafe(sel.client.Name)}
 	attrs := []slog.Attr{slog.String(logx.AttrClient, sel.client.Name)}
 	if s := sel.scenario; s != nil {
 		mocked := mockedParts(s)
 		skipped := skipsProxy(s)
-		parts = append(parts, "scenario "+s.Name)
+		parts = append(parts, "scenario "+headerSafe(s.Name))
 		if len(mocked) > 0 {
 			parts = append(parts, "mocked: "+strings.Join(mocked, ", "))
 		}

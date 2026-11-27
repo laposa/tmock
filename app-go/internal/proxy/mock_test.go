@@ -1,10 +1,12 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -293,5 +295,145 @@ func TestTemplateNotRenderedYet(t *testing.T) {
 	rec := do(p, "GET", "/api/proxy/svc/", nil, "X-Real-Ip", "10.0.0.1")
 	if got, _ := io.ReadAll(rec.Body); string(got) != body {
 		t.Errorf("body = %q", got)
+	}
+}
+
+// A mocked 204 or 304 on a proxied request drops the body instead of aborting the
+// response.
+func TestModifyToNoBodyStatus(t *testing.T) {
+	up := newFakeUpstream(t, "application/json")
+	p := New(Options{Catalog: mockCatalog(up.URL,
+		store.Scenario{Name: "a", RequestPath: sp("code"), ResponseCode: ip(204)},
+		store.Scenario{Name: "b", RequestPath: sp("body"), ResponseCode: ip(304), ResponseBody: sp("x")},
+	), Logger: slog.New(slog.DiscardHandler)})
+	front := httptest.NewServer(p)
+	defer front.Close()
+	for path, want := range map[string]int{"code": 204, "body": 304} {
+		r, _ := http.NewRequest("GET", front.URL+"/api/proxy/svc/"+path, nil)
+		r.Header.Set("X-Real-Ip", "10.0.0.1")
+		resp, err := http.DefaultClient.Do(r)
+		if err != nil {
+			t.Fatalf("%s: %v (response aborted?)", path, err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil || resp.StatusCode != want || len(body) != 0 || resp.Header.Get(HeaderStatus) != StatusMocked {
+			t.Errorf("%s: %d %q %v", path, resp.StatusCode, body, err)
+		}
+	}
+}
+
+// A skip-proxy 204 sends no Content-Length, not even one from the scenario's headers.
+func TestSkipProxyNoBodyDropsLength(t *testing.T) {
+	p := New(Options{Catalog: mockCatalog("http://upstream.invalid", store.Scenario{Name: "n", SkipProxy: true,
+		ResponseBody: sp("x"), ResponseCode: ip(204), ResponseHeaders: map[string]*string{"Content-Length": sp("10")}}),
+		Logger: slog.New(slog.DiscardHandler)})
+	rec := do(p, "GET", "/api/proxy/svc/", nil, "X-Real-Ip", "10.0.0.1")
+	if rec.Code != 204 || rec.Header().Get("Content-Length") != "" {
+		t.Errorf("got %d %v", rec.Code, rec.Header())
+	}
+}
+
+// A replaced body does not announce the upstream's trailers.
+func TestReplacedBodyDropsTrailers(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Trailer", "X-Checksum")
+		w.WriteHeader(200)
+		_, _ = io.WriteString(w, "chunk")
+		w.(http.Flusher).Flush()
+		w.Header().Set("X-Checksum", "abc")
+	}))
+	defer up.Close()
+	p := New(Options{Catalog: mockCatalog(up.URL, store.Scenario{Name: "s", ResponseBody: sp("mocked")}),
+		Logger: slog.New(slog.DiscardHandler)})
+	front := httptest.NewServer(p)
+	defer front.Close()
+	r, _ := http.NewRequest("GET", front.URL+"/api/proxy/svc/", nil)
+	r.Header.Set("X-Real-Ip", "10.0.0.1")
+	resp, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "mocked" || resp.Header.Get("Trailer") != "" || len(resp.Trailer) != 0 {
+		t.Errorf("body %q, Trailer %q, trailers %v", body, resp.Header.Get("Trailer"), resp.Trailer)
+	}
+}
+
+// An upgrade (WebSocket) passes through a scenario: only the headers change, and the
+// upgraded connection works.
+func TestUpgradeWithScenario(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, brw, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close()
+		_, _ = brw.WriteString("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: echo\r\n\r\n")
+		_ = brw.Flush()
+		line, _ := brw.ReadString('\n')
+		_, _ = brw.WriteString("echo: " + line)
+		_ = brw.Flush()
+	}))
+	defer up.Close()
+	p := New(Options{Catalog: mockCatalog(up.URL, store.Scenario{Name: "s", ResponseCode: ip(500), ResponseBody: sp("mocked")}),
+		Logger: slog.New(slog.DiscardHandler)})
+	front := httptest.NewServer(p)
+	defer front.Close()
+
+	conn, err := net.Dial("tcp", strings.TrimPrefix(front.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_, _ = io.WriteString(conn, "GET /api/proxy/svc/ws HTTP/1.1\r\nHost: x\r\nX-Real-Ip: 10.0.0.1\r\nConnection: Upgrade\r\nUpgrade: echo\r\n\r\n")
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != 101 || resp.Header.Get(HeaderScenario) != "s" {
+		t.Fatalf("got %d %v", resp.StatusCode, resp.Header)
+	}
+	_, _ = io.WriteString(conn, "hello\n")
+	if line, _ := br.ReadString('\n'); line != "echo: hello\n" {
+		t.Errorf("upgraded connection: %q", line)
+	}
+}
+
+// A 502 still says which client and scenario were selected.
+func TestUpstreamFailureKeepsTmockHeaders(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+	p := New(Options{Catalog: mockCatalog("http://"+addr, store.Scenario{Name: "s", ResponseHeaders: map[string]*string{"X-A": sp("1")}}),
+		Logger: slog.New(slog.DiscardHandler)})
+	rec := do(p, "GET", "/api/proxy/svc/", nil, "X-Real-Ip", "10.0.0.1")
+	if rec.Code != 502 || rec.Header().Get(HeaderStatus) != StatusMocked || rec.Header().Get(HeaderClient) != "qa" ||
+		rec.Header().Get(HeaderScenario) != "s" {
+		t.Errorf("got %d %v", rec.Code, rec.Header())
+	}
+}
+
+// A name with a line break cannot forge a log line.
+func TestLogNamesAreSingleLine(t *testing.T) {
+	up := newFakeUpstream(t, "")
+	data := store.CatalogData{
+		Services: []store.CatalogService{{Service: store.Service{ID: 1, Path: "svc", Name: "S", UpstreamURL: up.URL},
+			Scenarios: []store.Scenario{{ID: 1, Name: "s\n1.2.3.4 GET /x 200 1ms 0B"}}}},
+		Clients: []store.CatalogClient{{ID: 1, Name: "c\nfake", Condition: []byte(`{"cidr":"0.0.0.0/0"}`), Scenarios: []int64{1}}},
+	}
+	logs, logger := logxtest.New()
+	p := New(Options{Catalog: staticCatalog{snap: catalog.Build(data, nil, nil)}, Logger: logger})
+	do(p, "GET", "/api/proxy/svc/", nil)
+	for _, r := range logs.Events(logx.EventProxyRequest) {
+		if strings.ContainsAny(r.Message, "\r\n") {
+			t.Errorf("multi-line message %q", r.Message)
+		}
 	}
 }

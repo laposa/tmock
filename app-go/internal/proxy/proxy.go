@@ -273,6 +273,9 @@ func (p *Proxy) upstreamFailed(w http.ResponseWriter, r *http.Request, err error
 	if ex := exchangeFrom(r); ex != nil && r.Context().Err() == nil {
 		ex.failure = err // a client that went away is not an upstream failure
 	}
+	if ex := exchangeFrom(r); ex != nil {
+		setTmockHeaders(w.Header(), status(ex.sel), ex.sel)
+	}
 	plain(w, http.StatusBadGateway, "Bad Gateway")
 }
 

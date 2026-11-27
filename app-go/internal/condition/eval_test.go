@@ -110,3 +110,35 @@ func TestCompileRejectsInvalid(t *testing.T) {
 		t.Error("nil compiled")
 	}
 }
+
+// Go's server keeps Host out of Header; conditions on it still work.
+func TestMatchHost(t *testing.T) {
+	m := mustCompile(t, `{"headerMatch":{"header":"host","value":"qa.example.com"}}`)
+	if !m.Match(Request{Header: http.Header{}, Host: "qa.example.com"}) {
+		t.Error("Host not matched")
+	}
+	if m.Match(Request{Header: http.Header{}, Host: "prod.example.com"}) {
+		t.Error("other Host matched")
+	}
+	re := mustCompile(t, `{"headerRegex":{"header":"Host","value":"^qa\\."}}`)
+	if !re.Match(Request{Header: http.Header{}, Host: "qa.example.com"}) {
+		t.Error("Host regex not matched")
+	}
+}
+
+// An IPv6 prefix that covers the IPv4-mapped range covers IPv4 clients too (spec §7.3:
+// normalised on both sides); other IPv6 prefixes do not.
+func TestCIDRv6PrefixCoveringIPv4(t *testing.T) {
+	for cond, want := range map[string]bool{
+		`{"cidr":"::/0"}`:                true,
+		`{"cidr":"::/80"}`:               true,
+		`{"cidr":"::ffff:0:0/96"}`:       true,
+		`{"cidr":"2001:db8::/32"}`:       false,
+		`{"cidr":"::ffff:10.0.0.0/104"}`: true,
+		`{"cidr":"::ffff:11.0.0.0/104"}`: false,
+	} {
+		if got := mustCompile(t, cond).Match(req("10.1.2.3")); got != want {
+			t.Errorf("%s with 10.1.2.3: %v, want %v", cond, got, want)
+		}
+	}
+}

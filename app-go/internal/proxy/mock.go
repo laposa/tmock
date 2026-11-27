@@ -58,6 +58,9 @@ func writeMock(w http.ResponseWriter, sel selection) {
 		status = *s.ResponseCode
 	}
 	if !bodyAllowed(status) {
+		// A scenario's own Content-Length or Transfer-Encoding must not survive either.
+		h.Del("Content-Length")
+		h.Del("Transfer-Encoding")
 		w.WriteHeader(status)
 		return
 	}
@@ -82,10 +85,18 @@ func bodyAllowed(status int) bool {
 //  5. the x-tmock-* headers.
 //
 // Without a replaced body the upstream's body is streamed untouched, so it is not looked
-// at for the fallback either.
+// at for the fallback either. A status that allows no body (204, 304) drops whichever
+// body there is, since writing one would abort the response.
+//
+// An upgrade (101 Switching Protocols) gets only the headers: its body is the upgraded
+// connection, and a new status would break the upgrade.
 func modifyUpstream(resp *http.Response, sel selection) {
 	s := sel.scenario
 	h := resp.Header
+	if resp.StatusCode == http.StatusSwitchingProtocols {
+		setTmockHeaders(h, StatusMocked, sel)
+		return
+	}
 	for name, v := range s.ResponseHeaders {
 		if v == nil {
 			h.Del(name)
@@ -100,16 +111,33 @@ func modifyUpstream(resp *http.Response, sel selection) {
 	if s.ResponseBody != nil {
 		body := responseBody(s)
 		_ = resp.Body.Close()
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-		resp.ContentLength = int64(len(body))
-		resp.TransferEncoding = nil
-		resp.Uncompressed = false
+		replaceBody(resp, body)
 		h.Del("Etag")
 		h.Del("Content-Encoding")
-		h.Del("Content-Length")
 		setContentTypeFallback(h, body)
 	}
+	if !bodyAllowed(resp.StatusCode) {
+		_ = resp.Body.Close()
+		replaceBody(resp, nil)
+	}
 	setTmockHeaders(h, StatusMocked, sel)
+}
+
+// replaceBody gives resp a fixed body (none when nil) in place of the upstream's,
+// without the upstream's framing: Content-Length, Transfer-Encoding and trailers.
+func replaceBody(resp *http.Response, body []byte) {
+	if body == nil {
+		resp.Body = http.NoBody
+	} else {
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+	}
+	resp.ContentLength = int64(len(body))
+	resp.TransferEncoding = nil
+	resp.Uncompressed = false
+	resp.Trailer = nil
+	resp.Header.Del("Content-Length")
+	resp.Header.Del("Transfer-Encoding")
+	resp.Header.Del("Trailer")
 }
 
 // setContentTypeFallback sets a Content-Type when there is none (spec §7.8 step 4).

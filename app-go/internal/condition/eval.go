@@ -14,6 +14,9 @@ type Request struct {
 	// zero Addr (no usable address) matches no ip or cidr predicate.
 	IP     netip.Addr
 	Header http.Header
+	// Host is the request's Host header. Go's server moves it out of Header (into
+	// http.Request.Host), so it is passed separately; conditions on "Host" use it.
+	Host string
 }
 
 // Matcher is a compiled condition: regular expressions, addresses and prefixes are parsed
@@ -126,15 +129,28 @@ func (n *node) match(r Request) bool {
 	case kindIP:
 		v = r.IP.IsValid() && r.IP == n.ip
 	case kindCIDR:
-		v = r.IP.IsValid() && n.prefix.Contains(r.IP)
+		v = r.IP.IsValid() && (n.prefix.Contains(r.IP) ||
+			// An IPv6 prefix that covers ::ffff:0:0/96 (such as ::/0) also covers the
+			// unmapped IPv4 client, which is that address normalised (spec §7.3).
+			(r.IP.Is4() && n.prefix.Addr().Is6() && n.prefix.Contains(netip.AddrFrom16(r.IP.As16()))))
 	case kindHeaderMatch:
-		value, ok := headerValue(r.Header, n.header)
+		value, ok := r.header(n.header)
 		v = ok && value == n.value // a missing header never matches
 	case kindHeaderRegex:
-		value, _ := headerValue(r.Header, n.header) // a missing header is ""
+		value, _ := r.header(n.header) // a missing header is ""
 		v = n.re.MatchString(value)
 	}
 	return v != n.not
+}
+
+// header is headerValue, with Host taken from r.Host.
+func (r Request) header(name string) (string, bool) {
+	if name == "Host" {
+		if r.Host != "" {
+			return r.Host, true
+		}
+	}
+	return headerValue(r.Header, name)
 }
 
 // headerValue returns every value of the header name, joined with ", " (spec §7.3), and

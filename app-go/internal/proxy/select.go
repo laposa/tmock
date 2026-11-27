@@ -22,7 +22,7 @@ func matchingClients(clients []catalog.Client, r *http.Request) []*catalog.Clien
 	if len(clients) == 0 {
 		return nil
 	}
-	cr := condition.Request{Header: r.Header}
+	cr := condition.Request{Header: r.Header, Host: r.Host}
 	if ip, err := netip.ParseAddr(clientip.From(r)); err == nil {
 		cr.IP = ip.Unmap()
 	}

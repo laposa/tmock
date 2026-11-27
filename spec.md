@@ -920,8 +920,10 @@ Each condition node has exactly one predicate, plus an optional `not` that negat
   IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`) are normalised to IPv4 on both sides.
 - Found in I10: conditions are compiled once per catalog build (`condition.Compile` →
   `Matcher`: regexes, addresses and prefixes parsed), not per request. "Both sides" includes
-  prefixes: `::ffff:10.0.0.0/104` is `10.0.0.0/8`. An IPv4 prefix never contains an IPv6
-  client. `headerMatch` compares the value case-sensitively. An enabled client whose
+  prefixes: `::ffff:10.0.0.0/104` is `10.0.0.0/8`, and an IPv6 prefix that covers the
+  mapped range (`::/0`, `::ffff:0:0/96`) also covers every IPv4 client. An IPv4 prefix never
+  contains an IPv6 client. `headerMatch` compares the value case-sensitively. A condition on
+  `Host` works, although Go's server keeps that header out of `Header` (`r.Host`). An enabled client whose
   condition is empty or does not compile (which `internal/app` prevents) is left out of the
   catalog with a warning: an empty condition would match every request.
 
@@ -1047,7 +1049,14 @@ Until I12 the body is sent verbatim, template marker included.
   body is never read to guess its type: it stays streamed, and possibly compressed. The
   `x-tmock-*` headers of step 5 replace any `x-tmock-*` a scenario's `responseHeaders` set.
   Client and scenario names may contain any text, so control characters (line breaks) become
-  spaces in `x-tmock-client` and `x-tmock-scenario`, as a header value cannot hold them.
+  spaces in `x-tmock-client` and `x-tmock-scenario`, as a header value cannot hold them, and
+  in the log line, where they could forge another line.
+- Found in I10 (review): a `responseCode` of `204` or `304` drops whichever body there is,
+  the upstream's or the scenario's (writing one would abort the response). A replaced body
+  drops the upstream's framing too: `Transfer-Encoding` and announced trailers. An upgrade
+  (`101`, WebSocket) gets only the headers of a scenario: changing its status or body would
+  break the upgraded connection. A `502` after a failed upstream call still carries the
+  `x-tmock-*` headers of the selection.
 
 ### 7.9 Proxy log line
 
