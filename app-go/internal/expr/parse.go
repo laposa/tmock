@@ -299,7 +299,7 @@ func (p *parser) lexString(start int) (string, int, error) {
 				if i+6 > len(s) {
 					return "", 0, p.errAt(i, `"\u" needs four hex digits`)
 				}
-				n, err := strconv.ParseUint(s[i+2:i+6], 16, 32)
+				n, err := strconv.ParseUint(s[i+2:i+6], 16, 16) // four hex digits: at most 0xFFFF
 				if err != nil {
 					return "", 0, p.errAt(i, `"\u" needs four hex digits`)
 				}
