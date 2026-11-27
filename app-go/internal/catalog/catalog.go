@@ -17,6 +17,7 @@ import (
 	"net/url"
 
 	"github.com/laposa/tmock/app-go/internal/condition"
+	"github.com/laposa/tmock/app-go/internal/expr"
 	"github.com/laposa/tmock/app-go/internal/store"
 )
 
@@ -46,6 +47,7 @@ type Scenario struct {
 	RequestMethod    *string
 	RequestPath      *string
 	RequestCondition *string
+	Condition        *expr.Expr // RequestCondition parsed; nil when unset
 	ResponseCode     *int
 	ResponseHeaders  map[string]*string
 	ResponseBody     *string
@@ -77,9 +79,10 @@ func (s *Snapshot) Counts() (services, scenarios, clients int) {
 
 // Build turns the catalog data into a snapshot. overrides maps service paths to the
 // upstream URL to use instead of the stored one (SERVICES_UPSTREAM_OVERRIDES). A service
-// whose upstream URL does not parse, or a client whose condition does not compile or is
-// empty, cannot have been saved by internal/app; it is left out and reported to logger
-// rather than failing the whole catalog. (An empty condition would match every request.)
+// whose upstream URL does not parse, a scenario whose request condition does not parse,
+// or a client whose condition does not compile or is empty, cannot have been saved by
+// internal/app; it is left out and reported to logger rather than failing the whole
+// catalog. (An empty condition would match every request.)
 func Build(data store.CatalogData, overrides map[string]string, logger *slog.Logger) *Snapshot {
 	if logger == nil {
 		logger = slog.Default()
@@ -98,9 +101,17 @@ func Build(data store.CatalogData, overrides map[string]string, logger *slog.Log
 		svc := &Service{ID: s.ID, Path: s.Path, Name: s.Name, UpstreamURL: raw, Upstream: u,
 			Scenarios: make([]Scenario, 0, len(s.Scenarios))}
 		for _, sc := range s.Scenarios {
+			var cond *expr.Expr
+			if sc.RequestCondition != nil {
+				var err error
+				if cond, err = expr.Parse(*sc.RequestCondition); err != nil {
+					logger.Warn(fmt.Sprintf("catalog: scenario %d left out: its request condition does not parse: %v", sc.ID, err))
+					continue
+				}
+			}
 			svc.Scenarios = append(svc.Scenarios, Scenario{
 				ID: sc.ID, Name: sc.Name,
-				RequestMethod: sc.RequestMethod, RequestPath: sc.RequestPath, RequestCondition: sc.RequestCondition,
+				RequestMethod: sc.RequestMethod, RequestPath: sc.RequestPath, RequestCondition: sc.RequestCondition, Condition: cond,
 				ResponseCode: sc.ResponseCode, ResponseHeaders: sc.ResponseHeaders, ResponseBody: sc.ResponseBody,
 				SkipProxy: sc.SkipProxy,
 			})

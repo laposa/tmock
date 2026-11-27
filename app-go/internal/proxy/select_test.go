@@ -1,12 +1,36 @@
 package proxy
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/laposa/tmock/app-go/internal/catalog"
+	"github.com/laposa/tmock/app-go/internal/expr"
 )
+
+func mustExpr(src string) *expr.Expr {
+	e, err := expr.Parse(src)
+	if err != nil {
+		panic(err)
+	}
+	return e
+}
+
+// fakeEnv is a conditionEnv that records whether the body was asked for.
+type fakeEnv struct {
+	req       expr.Request
+	err       error
+	calls     int
+	bodyAsked bool
+}
+
+func (f *fakeEnv) Request(needBody bool) (*expr.Request, error) {
+	f.calls++
+	f.bodyAsked = f.bodyAsked || needBody
+	return &f.req, f.err
+}
 
 func sp(s string) *string { return &s }
 
@@ -26,7 +50,7 @@ func TestSelectScenario(t *testing.T) {
 		{ID: 1, Name: "a-orders-get", RequestMethod: sp("GET"), RequestPath: sp("Orders/42")},
 		{ID: 2, Name: "b-orders-any", RequestPath: sp("orders/42")},
 		{ID: 3, Name: "c-any"},
-		{ID: 4, Name: "d-with-condition", RequestCondition: sp("$request.method == 'GET'")},
+		{ID: 4, Name: "d-with-condition", Condition: mustExpr("$request.method == 'GET'")},
 		{ID: 5, Name: "e-post", RequestMethod: sp("POST")},
 	}}
 	cases := []struct {
@@ -44,14 +68,20 @@ func TestSelectScenario(t *testing.T) {
 		{"path filter", []*catalog.Client{client(1, "qa", 1, 2, 3)}, "GET", "orders/43", "c-any", "qa"},
 		{"empty path", []*catalog.Client{client(1, "qa", 1, 2)}, "GET", "", "", "qa"},
 		{"unassigned is skipped", []*catalog.Client{client(1, "qa", 3)}, "GET", "orders/42", "c-any", "qa"},
-		{"request condition not applied before I11", []*catalog.Client{client(1, "qa", 4)}, "GET", "x", "", "qa"},
+		{"request condition true", []*catalog.Client{client(1, "qa", 4)}, "GET", "x", "d-with-condition", "qa"},
+		{"request condition false", []*catalog.Client{client(1, "qa", 4)}, "PUT", "x", "", "qa"},
+		{"request condition false: next scenario", []*catalog.Client{client(1, "qa", 4, 5)}, "POST", "x", "e-post", "qa"},
 		{"later scenario", []*catalog.Client{client(1, "qa", 5)}, "POST", "x", "e-post", "qa"},
 		{"nothing fits: first client", []*catalog.Client{client(1, "qa", 5), client(2, "dev")}, "GET", "x", "", "qa"},
 		{"reported: first client with the winner", []*catalog.Client{client(1, "qa", 5), client(2, "dev", 3), client(3, "ci", 3)}, "GET", "x", "c-any", "dev"},
 		{"any client's assignment counts", []*catalog.Client{client(1, "qa", 3), client(2, "dev", 1)}, "GET", "orders/42", "a-orders-get", "dev"},
 	}
 	for _, tc := range cases {
-		sel := selectScenario(svc, tc.clients, tc.method, tc.path)
+		env := &fakeEnv{req: expr.Request{Method: tc.method}}
+		sel, err := selectScenario(svc, tc.clients, tc.method, tc.path, env)
+		if err != nil {
+			t.Fatal(err)
+		}
 		var gotScenario, gotClient string
 		if sel.scenario != nil {
 			gotScenario = sel.scenario.Name
@@ -62,6 +92,37 @@ func TestSelectScenario(t *testing.T) {
 		if gotScenario != tc.scenario || gotClient != tc.client {
 			t.Errorf("%s: scenario %q client %q, want %q %q", tc.name, gotScenario, gotClient, tc.scenario, tc.client)
 		}
+	}
+}
+
+// Spec §7.5, §7.7: a request condition is evaluated only for a scenario that passes the
+// other filters, and the body is asked for only by a condition that needs it.
+func TestSelectConditionLazily(t *testing.T) {
+	svc := &catalog.Service{Path: "users", Scenarios: []catalog.Scenario{
+		{ID: 1, Name: "a-body", RequestMethod: sp("POST"), Condition: mustExpr("$request.body.id == 1")},
+		{ID: 2, Name: "b-headers", Condition: mustExpr("$request.headers.x == 'y'")},
+		{ID: 3, Name: "c-plain"},
+	}}
+	qa := []*catalog.Client{client(1, "qa", 1, 2, 3)}
+
+	env := &fakeEnv{}
+	if sel, _ := selectScenario(svc, qa, "GET", "", env); sel.scenario.Name != "c-plain" || env.bodyAsked || env.calls != 1 {
+		t.Errorf("GET: %s, body asked %v, calls %d", sel.scenario.Name, env.bodyAsked, env.calls)
+	}
+	env = &fakeEnv{}
+	if sel, _ := selectScenario(svc, []*catalog.Client{client(1, "qa", 3)}, "POST", "", env); sel.scenario.Name != "c-plain" || env.calls != 0 {
+		t.Errorf("unassigned: %s, calls %d", sel.scenario.Name, env.calls)
+	}
+	env = &fakeEnv{req: expr.Request{Body: map[string]any{"id": 1.0}}}
+	if sel, _ := selectScenario(svc, qa, "POST", "", env); sel.scenario.Name != "a-body" || !env.bodyAsked {
+		t.Errorf("POST: %s, body asked %v", sel.scenario.Name, env.bodyAsked)
+	}
+
+	boom := errors.New("boom")
+	env = &fakeEnv{err: boom}
+	sel, err := selectScenario(svc, qa, "POST", "", env)
+	if !errors.Is(err, boom) || sel.scenario != nil || sel.client.Name != "qa" {
+		t.Errorf("error: %v %+v", err, sel)
 	}
 }
 

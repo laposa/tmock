@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/laposa/tmock/app-go/internal/expr"
 	"github.com/laposa/tmock/app-go/internal/httpx"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/store"
@@ -240,6 +241,12 @@ func (a *App) scenarioFields(ctx context.Context, d *scenarioDraft) (store.Scena
 	}
 	if m := d.RequestMethod; m != nil {
 		v.Check(slices.Contains(RequestMethods, *m), "requestMethod", "must be one of "+strings.Join(RequestMethods, ", "))
+	}
+	if c := d.RequestCondition; c != nil {
+		// The message says where the error is: "column 17: …" (spec §7.4, §10.3 SC5).
+		if _, err := expr.Parse(*c); err != nil {
+			v.Add("requestCondition", err.Error())
+		}
 	}
 	if c := d.ResponseCode; c != nil {
 		v.Check(*c >= 100 && *c <= 599, "responseCode", "must be between 100 and 599")

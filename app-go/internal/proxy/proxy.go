@@ -3,14 +3,14 @@
 // scenario, and then answers from the scenario alone (skip proxy) or forwards the request
 // to the upstream and modifies its response.
 //
-// Request conditions (I11) and templates (I12) are not evaluated yet: a scenario with a
-// request condition never applies, and bodies are used verbatim.
+// Templates (I12) are not rendered yet: bodies are used verbatim.
 //
 // The package is backend code: standard library only.
 package proxy
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -170,7 +170,17 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request) {
 	ex := exchangeFrom(r)
 	ex.service = svc
 	ex.rest = restOf(r)
-	ex.sel = selectScenario(svc, matchingClients(snap.Clients(), r), r.Method, requestPath(r))
+	sel, err := selectScenario(svc, matchingClients(snap.Clients(), r), r.Method, requestPath(r), &requestEnv{r: r})
+	ex.sel = sel
+	switch {
+	case errors.Is(err, errBodyTooLarge):
+		plain(w, http.StatusRequestEntityTooLarge, "Request Entity Too Large")
+		return
+	case err != nil:
+		// The client went away, or sent a broken body, while a request condition needed it.
+		plain(w, http.StatusBadRequest, "Bad Request")
+		return
+	}
 	if skipsProxy(ex.sel.scenario) {
 		writeMock(w, ex.sel)
 		return

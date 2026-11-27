@@ -4,14 +4,14 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I10** (matching and mocking). You can log in and manage services, scenarios,
+- **Status:** iteration **I11** (request conditions). You can log in and manage services, scenarios,
   clients (with the condition builder, scenario assignments and client tokens), and, as an
   admin, user accounts; every user can edit their own account. The REST API has login,
   logout, `me` and CRUD on `/api/service`, `/api/scenario`, `/api/client` (with client tokens)
   and `/api/user` (with `/api/user/profile`). `/api/proxy/{service}/…` matches clients by
-  their conditions, picks a scenario and mocks the response (or forwards the request
-  unchanged). Request conditions (I11) and templates (I12) are not evaluated yet. Progress is
-  tracked in spec §16.
+  their conditions, picks a scenario (including its request condition) and mocks the
+  response (or forwards the request unchanged). Templates (I12) are not rendered yet.
+  Progress is tracked in spec §16.
 
 ## Prerequisites
 
@@ -132,9 +132,25 @@ Mocking a response, with echo-upstream running as above:
    `curl -i -X OPTIONS -H 'Origin: https://app.example' -H 'Access-Control-Request-Method: POST' localhost:3000/api/proxy/echo/a`
    answers `204` with the CORS headers (`PROXY_CORS_ALLOWED_ORIGINS` limits the origins).
 
-A scenario applies when one of the matching clients has it assigned and its Method and
-Path (compared case-insensitively, without the query) fit; the first such scenario in name
-order wins. A scenario with a request Condition never applies until I11.
+A scenario applies when one of the matching clients has it assigned and its Method, Path
+(compared case-insensitively, without the query) and Condition fit; the first such scenario
+in name order wins.
+
+Request conditions (spec §7.4) are expressions over `$request`: `method`, `path` (the whole
+path, `/api/proxy/…` included), `query`, `headers` (lower-case names), `body` (JSON, or the
+form fields) and `ip`, with `==`, `!=`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `!` and
+parentheses. With the "boom" scenario above:
+
+1. Edit it: switch on **Condition** and enter `$request.body.userId == "42"`; Skip Proxy on.
+2. `curl -i localhost:3000/api/proxy/echo/a -H 'Content-Type: application/json' -d '{"userId":"42"}'`
+   answers `500 {"error":"boom"}`; with `-d '{"userId":"7"}'` the request is proxied and the
+   echo shows the body unchanged.
+3. Enter `$request.body.userId = "42"` and Save: the editor shows
+   `column 22: "=" is not an operator; use "==" to compare` under the field, and the REST
+   API answers `400` with the same message in `details.requestCondition`.
+4. A body over 10 MB gets `413` when a condition needs it, and is streamed otherwise.
+
+The parser has a fuzz test: `go test -run '^$' -fuzz FuzzParse -fuzztime 60s ./internal/expr`.
 
 Each proxy request is logged once, as `tmock.proxy.request` (`<ip> <METHOD> <url> <status>
 [client …; scenario …; mocked: …] <ms>ms <size>`); a failing upstream answers `502 Bad Gateway` and logs
@@ -293,8 +309,10 @@ internal/clientip/    the client-IP rule (spec §7.3)
 internal/config/      configuration and .env loading (spec §4)
 internal/db/          connection pool, typed errors, migration runner and migrations (spec §3.3, §5)
 internal/db/dbtest/   per-test schemas for DB integration tests
+internal/expr/        request-condition expressions: parser with error positions, evaluation (spec §7.4)
 internal/password/    PBKDF2 password hashing (spec §9.1)
-internal/proxy/       /api/proxy/: service lookup, upstream forwarding, proxy log (spec §7)
+internal/proxy/       /api/proxy/: service lookup, scenario selection, mocking, upstream forwarding,
+                      proxy log (spec §7)
 internal/store/       repositories over database/sql (users, sessions, services, scenarios,
                       clients, and the catalog snapshot read)
 internal/condition/   client conditions: JSON model, parsing, validation, the empty rule
