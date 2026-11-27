@@ -164,7 +164,13 @@ func toInt(v value) int64 {
 		if math.IsNaN(n) {
 			return 0
 		}
-		return int64(max(min(n, math.MaxInt64), math.MinInt64))
+		switch {
+		case n >= 1<<63:
+			return math.MaxInt64
+		case n < -(1 << 63):
+			return math.MinInt64
+		}
+		return int64(n)
 	}
 	return 0
 }

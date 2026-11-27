@@ -116,7 +116,20 @@ func delimited(src string, j int) (token, int, error) {
 		tok.trimLeft = true
 		from++
 	}
-	end := closeIndex(src, from, closer)
+	quoted := true
+	if !output {
+		// raw and comment (and their end tags) hold free text, where a lone ' is fine.
+		rest := strings.TrimLeft(src[from:], whitespace)
+		n := 0
+		for n < len(rest) && isIdentByte(rest[n]) {
+			n++
+		}
+		switch rest[:n] {
+		case "raw", "endraw", "comment", "endcomment":
+			quoted = false
+		}
+	}
+	end := closeIndex(src, from, closer, quoted)
 	if end < 0 {
 		return token{}, 0, errorAt(src, j, fmt.Sprintf("%s is not closed: expected %q", what, closer))
 	}
@@ -139,8 +152,15 @@ func delimited(src string, j int) (token, int, error) {
 	return tok, end + 2, nil
 }
 
-// closeIndex returns the offset of closer at or after i, outside '…' and "…", or -1.
-func closeIndex(src string, i int, closer string) int {
+// closeIndex returns the offset of closer at or after i, or -1; when quoted, outside
+// '…' and "…".
+func closeIndex(src string, i int, closer string, quoted bool) int {
+	if !quoted {
+		if k := strings.Index(src[i:], closer); k >= 0 {
+			return i + k
+		}
+		return -1
+	}
 	var quote byte
 	for ; i < len(src); i++ {
 		c := src[i]

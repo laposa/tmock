@@ -179,14 +179,19 @@ func (r *renderer) forNode(n forNode, out *strings.Builder) error {
 			lo = satAdd(lo, off)
 		}
 	}
+	length := rangeValue{lo, hi}.len()
 	if n.limit != nil {
 		v, err := r.eval(n.limit)
 		if err != nil {
 			return err
 		}
-		hi = min(hi, satAdd(lo, max(toInt(v), 0)-1))
+		if limit := max(toInt(v), 0); limit < length {
+			length = limit
+			if length > 0 {
+				hi = lo + length - 1 // fits: hi was further from lo
+			}
+		}
 	}
-	length := rangeValue{lo, hi}.len()
 	if length == 0 {
 		_, err := r.render(n.elseBody, out)
 		return err
@@ -222,8 +227,11 @@ func (r *renderer) forNode(n forNode, out *strings.Builder) error {
 // satAdd adds without overflowing.
 func satAdd(a, b int64) int64 {
 	s := a + b
-	if b > 0 && s < a {
+	switch {
+	case b > 0 && s < a:
 		return 1<<63 - 1
+	case b < 0 && s > a:
+		return -1 << 63
 	}
 	return s
 }

@@ -181,7 +181,7 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if skipsProxy(ex.sel.scenario) {
-		writeMock(w, ex.sel, p.responseBody(r.Context(), ex.sel.scenario))
+		writeMock(w, ex.sel, func() []byte { return p.responseBody(r.Context(), ex.sel.scenario) })
 		return
 	}
 	p.rp.ServeHTTP(w, r)
@@ -273,7 +273,7 @@ func (p *Proxy) modifyResponse(resp *http.Response) error {
 		return nil
 	}
 	// Rendered once the upstream has answered, so 'now' is the time of the response.
-	modifyUpstream(resp, ex.sel, p.responseBody(resp.Request.Context(), ex.sel.scenario))
+	modifyUpstream(resp, ex.sel, func() []byte { return p.responseBody(resp.Request.Context(), ex.sel.scenario) })
 	return nil
 }
 

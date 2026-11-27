@@ -55,8 +55,8 @@ func init() {
 		// string
 		"append":         str2(func(s, a string) string { return s + a }),
 		"prepend":        str2(func(s, a string) string { return a + s }),
-		"upcase":         str1(strings.ToUpper),
-		"downcase":       str1(strings.ToLower),
+		"upcase":         str1x(3, strings.ToUpper),
+		"downcase":       str1x(3, strings.ToLower),
 		"capitalize":     str1(capitalize),
 		"strip":          str1(strings.TrimSpace),
 		"lstrip":         str1(func(s string) string { return strings.TrimLeftFunc(s, unicode.IsSpace) }),
@@ -69,10 +69,10 @@ func init() {
 		"truncate":       truncate,
 		"truncatewords":  truncateWords,
 		"slice":          slice,
-		"escape":         str1(escapeHTML),
-		"url_encode":     str1(urlEncode),
+		"escape":         str1x(5, escapeHTML),
+		"url_encode":     str1x(3, urlEncode),
 		"url_decode":     urlDecode,
-		"newline_to_br":  str1(func(s string) string { return newlines.Replace(s) }),
+		"newline_to_br":  str1x(7, func(s string) string { return newlines.Replace(s) }),
 		"strip_newlines": str1(func(s string) string { return stripNewlines.Replace(s) }),
 
 		// array
@@ -233,8 +233,20 @@ func bound(replace func(c int) bool) filterFunc {
 
 // ── string ──────────────────────────────────────────────────────────────────────
 
-func str1(f func(string) string) filterFunc {
-	return func(_ *renderer, in filterInput) (value, error) { return f(in.str()), nil }
+func str1(f func(string) string) filterFunc { return str1x(1, f) }
+
+// str1x is str1 for a filter whose result can be up to factor times as long as its
+// input: MaxSize is checked before the string is built.
+func str1x(factor int, f func(string) string) filterFunc {
+	return func(r *renderer, in filterInput) (value, error) {
+		s := in.str()
+		if factor > 1 {
+			if err := r.reserve(len(s)*factor, in.pos); err != nil {
+				return nil, err
+			}
+		}
+		return f(s), nil
+	}
 }
 
 func str2(f func(s, a string) string) filterFunc {
@@ -300,12 +312,12 @@ func split(r *renderer, in filterInput) (value, error) {
 // truncate shortens to the length (50) in characters, the ellipsis ("...") included.
 func truncate(_ *renderer, in filterInput) (value, error) {
 	s := []rune(in.str())
-	n := toInt(in.arg(0, int64(50)))
+	n := max(toInt(in.arg(0, int64(50))), 0)
 	ellipsis := toString(in.arg(1, "..."))
 	if int64(len(s)) <= n {
 		return string(s), nil
 	}
-	keep := max(n-int64(utf8.RuneCountInString(ellipsis)), 0)
+	keep := max(n-int64(utf8.RuneCountInString(ellipsis)), 0) // n < len(s): no overflow
 	return string(s[:keep]) + ellipsis, nil
 }
 

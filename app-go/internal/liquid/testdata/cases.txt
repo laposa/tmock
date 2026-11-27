@@ -316,6 +316,21 @@ Thu Thursday Feb February 29 29 13 01 060 13  1 123 02 05 PM pm 09 4 4 24 2024 +
 ---
 Friday
 
+=== extreme numbers saturate instead of wrapping
+{{ "abcdef" | truncate: -9223372036854775808 }}|{{ "abcdef" | truncate: -100000000000000000000.0 }}|{% for i in (1..3) limit: 100000000000000000000.0 %}{{ i }}{% endfor %}|{{ (1..100000000000000000000.0) | size }}
+---
+...|...|123|9223372036854775807
+
+=== limit 0 at the lowest start
+{% for i in (-9223372036854775808..-9223372036854775800) limit: 0 %}{{ i }}{% else %}none{% endfor %}|{% for i in (-9223372036854775808..-9223372036854775807) limit: 1 %}{{ i }}{% endfor %}
+---
+none|-9223372036854775808
+
+=== quotes in comment and raw tags are free text
+{% comment don't %}x{% endcomment %}a{% comment ' %}{% endcomment ' %}b{% raw ' %}'{% endraw %}
+---
+ab'
+
 === error: block not closed
 {% if x %}a
 --- error
@@ -437,6 +452,12 @@ line 1, column 12: url_decode: invalid escape "%zz"
 {% for i in (1..2000000) %}{% endfor %}
 --- error
 line 1, column 1: the template takes more than 1000000 steps
+
+=== render error: an expanding filter is checked before it runs
+{% capture nl %}
+{% endcapture %}{% for i in (1..22) %}{% assign nl = nl | append: nl %}{% endfor %}{{ nl | newline_to_br }}
+--- error
+line 2, column 92: the template produces more than 16 MB
 
 === render error: too much output
 {% assign s = "xxxxxxxxxx" %}{% for i in (1..30) %}{% assign s = s | append: s %}{% endfor %}

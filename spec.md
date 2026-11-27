@@ -1025,7 +1025,8 @@ Found in I10: a `responseCode` of `204` or `304` is sent without a body and with
 response followed by `200`), so such a scenario is of no use; this is not rejected on save.
 Found in I12: a template body is rendered when the response is written: for a skip-proxy
 scenario at once, otherwise once the upstream has answered, so `'now'` is the time of the
-response. The content-type fallback looks at the rendered body.
+response. The content-type fallback looks at the rendered body. A status without a body
+(`204`, `304`, an upgrade) never renders the template, so it cannot fail either.
 
 ### 7.7 Upstream forwarding
 

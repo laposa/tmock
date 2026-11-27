@@ -368,6 +368,27 @@ func TestTemplateFallback(t *testing.T) {
 	}
 }
 
+// A status without a body never renders the template, mocked or proxied, so a failing
+// one logs nothing.
+func TestTemplateNotRenderedWithoutBody(t *testing.T) {
+	up := newFakeUpstream(t, "application/json")
+	logs, logger := logxtest.New()
+	failing := sp(liquid.Marker + "{{ 1 | divided_by: 0 }}")
+	p := New(Options{Catalog: mockCatalog(up.URL,
+		store.Scenario{Name: "a", RequestPath: sp("skip"), SkipProxy: true, ResponseCode: ip(204), ResponseBody: failing},
+		store.Scenario{Name: "b", RequestPath: sp("up"), ResponseCode: ip(304), ResponseBody: failing}),
+		Logger: logger})
+	for _, path := range []string{"/api/proxy/svc/skip", "/api/proxy/svc/up"} {
+		rec := do(p, "GET", path, nil, "X-Real-Ip", "10.0.0.1")
+		if rec.Code != 204 && rec.Code != 304 || rec.Body.Len() != 0 {
+			t.Errorf("%s: %d %q", path, rec.Code, rec.Body)
+		}
+	}
+	if ev := logs.Events(logx.EventTemplateFailed); len(ev) != 0 {
+		t.Errorf("rendered for no body: %+v", ev)
+	}
+}
+
 // A mocked 204 or 304 on a proxied request drops the body instead of aborting the
 // response.
 func TestModifyToNoBodyStatus(t *testing.T) {

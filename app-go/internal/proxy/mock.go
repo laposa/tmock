@@ -67,21 +67,26 @@ func skipsProxy(s *catalog.Scenario) bool {
 
 // writeMock answers the request from the scenario alone (spec §7.6): its status (200 when
 // unset), its headers (a null value is ignored), the content-type fallback, the
-// x-tmock-* headers and the body (the rendered one, from responseBody).
-func writeMock(w http.ResponseWriter, sel selection, body []byte) {
+// x-tmock-* headers and the body. body renders it (responseBody); it is called only when
+// the status allows a body, so a 204 never renders its template.
+func writeMock(w http.ResponseWriter, sel selection, body func() []byte) {
 	s := sel.scenario
+	status := http.StatusOK
+	if s.ResponseCode != nil {
+		status = *s.ResponseCode
+	}
+	var b []byte
+	if bodyAllowed(status) {
+		b = body()
+	}
 	h := w.Header()
 	for name, v := range s.ResponseHeaders {
 		if v != nil {
 			h.Set(name, *v)
 		}
 	}
-	setContentTypeFallback(h, body)
+	setContentTypeFallback(h, b)
 	setTmockHeaders(h, StatusMocked, sel)
-	status := http.StatusOK
-	if s.ResponseCode != nil {
-		status = *s.ResponseCode
-	}
 	if !bodyAllowed(status) {
 		// A scenario's own Content-Length or Transfer-Encoding must not survive either.
 		h.Del("Content-Length")
@@ -89,9 +94,9 @@ func writeMock(w http.ResponseWriter, sel selection, body []byte) {
 		w.WriteHeader(status)
 		return
 	}
-	h.Set("Content-Length", strconv.Itoa(len(body)))
+	h.Set("Content-Length", strconv.Itoa(len(b)))
 	w.WriteHeader(status)
-	_, _ = w.Write(body)
+	_, _ = w.Write(b)
 }
 
 // bodyAllowed reports whether a response with status may have a body (RFC 9110: not
@@ -116,8 +121,9 @@ func bodyAllowed(status int) bool {
 // An upgrade (101 Switching Protocols) gets only the headers: its body is the upgraded
 // connection, and a new status would break the upgrade.
 //
-// body is the scenario's body as responseBody renders it, nil when it has none.
-func modifyUpstream(resp *http.Response, sel selection, body []byte) {
+// body renders the scenario's body (responseBody); it is called only when the scenario
+// has one and the status allows it, so an upgrade or a 204 never renders its template.
+func modifyUpstream(resp *http.Response, sel selection, body func() []byte) {
 	s := sel.scenario
 	h := resp.Header
 	if resp.StatusCode == http.StatusSwitchingProtocols {
@@ -135,12 +141,16 @@ func modifyUpstream(resp *http.Response, sel selection, body []byte) {
 		resp.StatusCode = *s.ResponseCode
 		resp.Status = strconv.Itoa(resp.StatusCode) + " " + http.StatusText(resp.StatusCode)
 	}
-	if body != nil {
+	if s.ResponseBody != nil {
+		var b []byte
+		if bodyAllowed(resp.StatusCode) {
+			b = body()
+		}
 		_ = resp.Body.Close()
-		replaceBody(resp, body)
+		replaceBody(resp, b)
 		h.Del("Etag")
 		h.Del("Content-Encoding")
-		setContentTypeFallback(h, body)
+		setContentTypeFallback(h, b)
 	}
 	if !bodyAllowed(resp.StatusCode) {
 		_ = resp.Body.Close()
