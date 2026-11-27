@@ -953,6 +953,35 @@ literal  := 'single' | "double" | number | true | false | null
   - truthiness (for bare references and `!`): `null`, `false`, `0` and `""` are false.
 - A condition that does not parse is rejected when the scenario is saved (`400` with the error
   position). Evaluation itself cannot fail.
+- Found in I11:
+  - `$request.path` is the whole decoded request path (`/api/proxy/users/orders/42`), as the
+    legacy `req.path` was; `requestPath` (§7.5) is the one without the prefix. `headers`
+    includes `host` and joins several values with `", "` (§7.3); `ip` is the §7.3 client IP.
+  - `body` is parsed as JSON when the content type is `application/json`, ends in `+json`, or
+    is missing; as the form map (first values) for `application/x-www-form-urlencoded`;
+    otherwise, and when it does not parse, it is `null`. Strings compare byte by byte.
+    Numbers, in the body and in the condition, are exact to 512 bits (`big.Float`), so
+    ids beyond float64's 2^53 compare correctly (`9007199254740993` is not
+    `9007199254740992`); `1` equals `1.0`, also inside arrays and objects. A number of
+    more than 200 characters is read as float64, as exact parsing of a huge number takes
+    quadratic time.
+  - A body sent as `application/x-www-form-urlencoded` is a form even when it holds JSON.
+    That is what `curl -d '{"userId":"42"}'` sends without
+    `-H 'Content-Type: application/json'`, and `$request.body.userId` is then `null`.
+    Kept as specified; the README example sets the header.
+  - As the grammar says, `!` takes a whole comparison: `!$request.a == 1` is
+    `!($request.a == 1)`, unlike JavaScript. Comparisons cannot be chained (`a == b == c` is
+    an error). Number literals are JSON numbers, except that they may have leading
+    zeros (`1.`, `.5` and `1.e5` are errors, as is a literal that overflows); `[…]` takes a string or a non-negative
+    whole number; strings know the escapes `\\ \' \" \/ \n \r \t \uXXXX` and cannot
+    span lines. Parentheses and `!` nest at most 64 deep.
+  - The error message starts with its position, `column 17: …` (`line 2, column 3: …` past
+    the first line), counted in characters from 1 in the condition as written, leading
+    white space included (the stored condition is trimmed). Common slips get
+    a hint: `=` for `==`, a name without `$request`, an unquoted string.
+  - Conditions are parsed once per catalog build. A stored condition that does not parse
+    (saved before I11, or imported) leaves its scenario out of the catalog with a warning,
+    and any later save of that scenario has to fix it.
 
 ### 7.5 Scenario selection
 
@@ -975,9 +1004,11 @@ Given the service `S`, the matching clients `C` (in id order) and `rest`, the pa
    no scenario wins, it is the first client in `C`.
 
 Found in I10: `reqPath` is the decoded path (`a%20b` is `a b`); the method is compared
-exactly, as HTTP methods are case-sensitive. Until I11 evaluates request conditions, a
-scenario with a `requestCondition` is skipped, so it never applies to a request its
-condition might exclude.
+exactly, as HTTP methods are case-sensitive.
+
+Found in I11: the request condition is evaluated last, only for a scenario that passes the
+other filters, so the body is read only when such a candidate's condition refers to
+`$request.body` (or to `$request` as a whole).
 
 ### 7.6 Short-circuit (skip proxy)
 
@@ -1010,6 +1041,12 @@ Until I12 the body is sent verbatim, template marker included.
     when the request still goes upstream.
 - **Request body:** forwarded unchanged and streamed. It is buffered (up to 10 MB, otherwise `413`)
   only when a candidate scenario has a `requestCondition` that needs it.
+  Found in I11: a buffered body is forwarded with a `Content-Length` instead of chunked. A
+  body that cannot be read while a condition needs it (the client went away) is
+  `400 text/plain`; neither `413` nor `400` contacts the upstream, and both are logged as
+  proxy requests. Request trailers are lost when the body is buffered (it is no longer
+  chunked); without buffering their names reach the upstream but not their values, as
+  `ReverseProxy` forwards them. Trailers on requests are rare enough to leave this as is.
 - **Upstream failure** (connection refused, DNS, timeout): `502 text/plain "Bad Gateway"`, logged.
 - Found in I09:
   - `ReverseProxy` removes `X-Forwarded-For`, `-Host` and `-Proto` before `Rewrite` runs; the
@@ -1051,6 +1088,11 @@ Until I12 the body is sent verbatim, template marker included.
   Client and scenario names may contain any text, so control characters (line breaks) become
   spaces in `x-tmock-client` and `x-tmock-scenario`, as a header value cannot hold them, and
   in the log line, where they could forge another line.
+- Found in I11 (review), not fixed yet: a scenario's `responseHeaders` may set
+  `Content-Length` or `Transfer-Encoding`. With a replaced body (step 3) they are dropped,
+  but when the upstream body passes through, a wrong `Content-Length` truncates or aborts
+  the response. Saving such a scenario should be rejected along with the other header
+  checks (§6.4); proposed for I13.
 - Found in I10 (review): a `responseCode` of `204` or `304` drops whichever body there is,
   the upstream's or the scenario's (writing one would abort the response). A replaced body
   drops the upstream's framing too: `Transfer-Encoding` and announced trailers. An upgrade
@@ -2088,7 +2130,7 @@ Update this table as issues are created and closed.
 | I08 | Condition builder, accounts (M1) | | In review | `internal/condition/builder` (form ↔ tree ↔ condition; `edit=<op>:<path>` buttons that also work without JavaScript); user use cases with the admin rules under a table lock; Accounts and My Account; placeholder pages removed; the modal Close button works inside forms with their own Alpine component; builder edits are `hx-sync` drop, so a quick second edit cannot undo the first; the unsaved-changes guard is shared (`unsavedGuard`) and covers the builder; saves that change no user field are not written or logged; after a failed rename the client's Delete confirmation names the client as stored; the per-service tables of the scenario list and the assignment modal line up (`TableProps.Widths`: fixed column widths from size classes, since the CSP allows no inline styles); hidden input, menu, inline error, condition group and item components |
 | I09 | Proxy core and catalog cache | | In review | `internal/catalog` (immutable snapshot, TTL, one rebuild at a time, invalidation counter so a change during a rebuild is not lost, old snapshot kept on failure); `store.Catalog` reads it in one `REPEATABLE READ` transaction; `app.Options.Catalog` invalidated next to `tmock.entity.changed`; `internal/proxy` on `ReverseProxy.Rewrite`, putting back the client's `X-Forwarded-*` that `ReverseProxy` strips; no transport compression; `PROXY_UPSTREAM_TIMEOUT` for connect and response headers; proxy requests skip the request log (`logx.Traced`); `cmd/echo-upstream`; the rebuild lock is a channel for `synctest` |
 | I10 | Matching and mocking | | In review | `condition.Compile`/`Matcher` (compiled once per catalog build; mapped prefixes unmapped); empty or broken enabled conditions left out of the catalog; scenarios with a request condition skipped until I11; content-type fallback only for bodies tmock writes; `x-tmock-*` always tmock's own, names made header-safe; 204/304 mocks without a body; proxy CORS wraps every proxy response; `[client …; scenario …; mocked: …]` in the log, `tmock.mocked` and `tmock.proxy_skipped` |
-| I11 | Request-condition expressions | | Planned | |
+| I11 | Request-condition expressions | | In review | `internal/expr` (lexer, recursive-descent parser with positions, evaluator; depth limit 64; fuzzed); numbers exact to 512 bits; `$request.path` is the full path; body JSON also without a content type; parsed once per catalog build, a broken stored condition leaves its scenario out; the condition is evaluated last and the body read lazily, buffered bodies forwarded with `Content-Length`; save errors are `column N: …` (in the text as written) next to the field; framing headers in scenarios noted for I13 |
 | I12 | Liquid template subset | | Planned | |
 | I13 | Proxy hardening (M2) | | Planned | |
 | I14 | OpenAPI and swagger | | Planned | |

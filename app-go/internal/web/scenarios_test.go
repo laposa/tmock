@@ -206,6 +206,7 @@ func TestScenarioFormErrors(t *testing.T) {
 
 	// The use case's checks.
 	bad = url.Values{"name": {""}, "service": {""}, "requestMethodEnabled": {"on"}, "requestMethod": {"FETCH"},
+		"requestConditionEnabled": {"on"}, "requestCondition": {"$request.method == GET"},
 		"responseCodeEnabled": {"on"}, "responseCode": {"42"},
 		"responseHeadersEnabled": {"on"}, "headerName": {"Bad Name"}, "headerValue": {"1"},
 		"responseBodyEnabled": {"on"}, "responseBody": {""}, "skipProxy": {"on"}}
@@ -214,6 +215,7 @@ func TestScenarioFormErrors(t *testing.T) {
 		`<p class="field__error" id="scenario-name-message">is required</p>`,
 		`<p class="field__error" id="scenario-service-message">is required</p>`,
 		`<p class="field__error" id="scenario-requestMethod-message">must be one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS</p>`,
+		`<p class="field__error" id="scenario-requestCondition-message">column 20: unknown name &#34;GET&#34;: values come from $request, strings need quotes</p>`,
 		`<p class="field__error" id="scenario-responseCode-message">must be between 100 and 599</p>`,
 		`<p class="header-rows__error" role="alert">&#34;Bad Name&#34; is not a valid header name</p>`,
 		`<p class="switch__error" id="scenario-skipProxy-message">requires a response body</p>`)

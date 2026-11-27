@@ -23,7 +23,7 @@ func sampleData() store.CatalogData {
 			{Service: store.Service{ID: 1, Path: "users", Name: "Users", UpstreamURL: "http://users.internal/base"},
 				// The database's order (by name) is kept, not re-sorted in Go.
 				Scenarios: []store.Scenario{
-					{ID: 7, Name: "B", RequestMethod: ptr("GET")},
+					{ID: 7, Name: "B", RequestMethod: ptr("GET"), RequestCondition: ptr("$request.query.a == '1'")},
 					{ID: 3, Name: "a", ResponseCode: ptr(500)},
 				}},
 			{Service: store.Service{ID: 2, Path: "orders", Name: "Orders", UpstreamURL: "http://orders.internal"}},
@@ -47,6 +47,9 @@ func TestBuild(t *testing.T) {
 	}
 	if len(users.Scenarios) != 2 || users.Scenarios[0].Name != "B" || users.Scenarios[1].Name != "a" {
 		t.Errorf("scenario order = %+v", users.Scenarios)
+	}
+	if c := users.Scenarios[0].Condition; c == nil || users.Scenarios[1].Condition != nil {
+		t.Errorf("conditions not parsed: %+v", users.Scenarios)
 	}
 	orders, _ := snap.Service("orders")
 	if orders.UpstreamURL != "http://localhost:9000/o" || orders.Upstream.Path != "/o" {
@@ -75,6 +78,7 @@ func TestBuild(t *testing.T) {
 func TestBuildLeavesOutBrokenRows(t *testing.T) {
 	data := sampleData()
 	data.Services[1].UpstreamURL = "not a url"
+	data.Services[0].Scenarios[0].RequestCondition = ptr("$request.a = 1")
 	data.Clients[1].Condition = []byte(`{"bogus":1}`)
 	data.Clients = append(data.Clients,
 		store.CatalogClient{ID: 10, Name: "empty", Condition: []byte(`{"and":[]}`)},
@@ -85,11 +89,14 @@ func TestBuildLeavesOutBrokenRows(t *testing.T) {
 	if _, ok := snap.Service("orders"); ok {
 		t.Error("service with a bad URL kept")
 	}
+	if users, _ := snap.Service("users"); len(users.Scenarios) != 1 || users.Scenarios[0].ID != 3 {
+		t.Errorf("scenario with a bad condition kept: %+v", users.Scenarios)
+	}
 	if len(snap.Clients()) != 1 {
 		t.Errorf("clients = %+v", snap.Clients())
 	}
-	if n := len(logs.All()); n != 5 {
-		t.Errorf("%d warnings, want 5", n)
+	if n := len(logs.All()); n != 6 {
+		t.Errorf("%d warnings, want 6", n)
 	}
 }
 
