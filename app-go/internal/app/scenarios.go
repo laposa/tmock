@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -224,6 +225,7 @@ type scenarioDraft struct {
 // and resolves its service. Normalising before validating means that "" and null are the
 // same thing everywhere, and that a skipProxy check sees the body as it will be stored.
 func (a *App) scenarioFields(ctx context.Context, d *scenarioDraft) (store.ScenarioFields, error) {
+	rawCondition := d.RequestCondition // as written, for error positions
 	d.RequestMethod = normalise(d.RequestMethod, func(s string) string { return strings.ToUpper(strings.TrimSpace(s)) })
 	d.RequestPath = normalise(d.RequestPath, func(s string) string { return strings.Trim(strings.TrimSpace(s), "/") })
 	d.RequestCondition = normalise(d.RequestCondition, strings.TrimSpace)
@@ -245,7 +247,7 @@ func (a *App) scenarioFields(ctx context.Context, d *scenarioDraft) (store.Scena
 	if c := d.RequestCondition; c != nil {
 		// The message says where the error is: "column 17: …" (spec §7.4, §10.3 SC5).
 		if _, err := expr.Parse(*c); err != nil {
-			v.Add("requestCondition", err.Error())
+			v.Add("requestCondition", conditionError(*rawCondition, *c, err).Error())
 		}
 	}
 	if c := d.ResponseCode; c != nil {
@@ -276,6 +278,21 @@ func (a *App) scenarioFields(ctx context.Context, d *scenarioDraft) (store.Scena
 		ResponseBody:     d.ResponseBody,
 		SkipProxy:        d.SkipProxy,
 	}, nil
+}
+
+// conditionError moves a syntax error in the trimmed condition to its position in raw,
+// what the user wrote (and what the editor shows again), so leading white space does
+// not shift the column.
+func conditionError(raw, trimmed string, err error) error {
+	var e *expr.Error
+	if !errors.As(err, &e) {
+		return err
+	}
+	lead := strings.Index(raw, trimmed)
+	if lead < 0 {
+		return err
+	}
+	return expr.ErrorAt(raw, lead+e.Offset, e.Msg)
 }
 
 // headersProblem checks response headers: every name must be a valid HTTP header name,

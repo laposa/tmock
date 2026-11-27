@@ -3,6 +3,7 @@ package expr
 import (
 	"errors"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -16,7 +17,9 @@ func testRequest() *Request {
 			"userId": "4a30d84d-b820-4396-81b3-bc010aa95c01",
 			"count": 3, "zero": 0, "flag": true, "none": null,
 			"items": [{"sku": "a"}, {"sku": "b"}],
-			"nested": {"deep": {"x": "y"}}
+			"nested": {"deep": {"x": "y"}},
+			"big": 9007199254740993, "huge": 123456789012345678901234567890,
+			"dec": 0.1, "exp": 1e3, "nums": [1, 2.50], "nums2": [1.0, 2.5], "inf": 1e999
 		}`)),
 		IP: "127.0.0.1",
 	}
@@ -84,6 +87,16 @@ func TestEval(t *testing.T) {
 		{`0 == false`, false},
 		{`$request.body.items == $request.body.items`, true},
 		{`$request.body.nested == $request.body.items`, false},
+		// Numbers are exact beyond float64's 2^53.
+		{`$request.body.big == 9007199254740993`, true},
+		{`$request.body.big == 9007199254740992`, false},
+		{`$request.body.big > 9007199254740992`, true},
+		{`$request.body.huge == 123456789012345678901234567890`, true},
+		{`$request.body.huge == 123456789012345678901234567891`, false},
+		{`$request.body.dec == 0.1`, true},
+		{`$request.body.exp == 1000`, true},
+		{`$request.body.nums == $request.body.nums2`, true}, // 1 is 1.0 inside arrays too
+		{`$request.body.inf > 1e300`, true},
 		// Ordering: numbers with numbers, strings with strings, nothing else.
 		{`$request.body.count > 2`, true},
 		{`$request.body.count >= 3`, true},
@@ -171,6 +184,12 @@ func TestParseErrors(t *testing.T) {
 		{"$request.method == 'GET'\n&& $request.x ==", 2, 17, "expected a value but found end of condition"},
 		{`$request.method $request.path`, 1, 17, `unexpected $request`},
 		{`!`, 1, 2, "expected a value but found end of condition"},
+		{`$request.a == 1.`, 1, 15, `"1." is not a number`},
+		{`$request.a == 1.e5`, 1, 15, `"1.e5" is not a number`},
+		{`$request.a == 1e`, 1, 15, `"1e" is not a number`},
+		{`$request.a == 1e999999999`, 1, 15, `"1e999999999" is not a number`},
+		{`$request.a == .5`, 1, 15, `expected a value but found "."`},
+		{`$request.a[99999999999999999999]`, 1, 12, `index 99999999999999999999 is too large`},
 		{`()`, 1, 2, `expected a value but found ")"`},
 	}
 	for _, tc := range cases {
@@ -183,6 +202,37 @@ func TestParseErrors(t *testing.T) {
 		if e.Line != tc.line || e.Column != tc.column || e.Msg != tc.message {
 			t.Errorf("%q: %d:%d %q, want %d:%d %q", tc.src, e.Line, e.Column, e.Msg, tc.line, tc.column, tc.message)
 		}
+	}
+}
+
+func TestErrorAt(t *testing.T) {
+	t.Parallel()
+	e := ErrorAt("  a\n  bé c", 9, "x")
+	if e.Line != 2 || e.Column != 5 || e.Offset != 9 {
+		t.Errorf("%+v", e)
+	}
+	if e := ErrorAt("ab", 99, "x"); e.Offset != 2 || e.Column != 3 {
+		t.Errorf("past the end: %+v", e)
+	}
+}
+
+func TestValidNumber(t *testing.T) {
+	t.Parallel()
+	for s, want := range map[string]bool{"0": true, "-1": true, "01": true, "1.5": true, "1e5": true, "1E-5": true, "2.5e+3": true,
+		"": false, "-": false, "1.": false, ".5": false, "1e": false, "1e+": false, "1.e5": false, "--1": false, "1x": false} {
+		if validNumber(s) != want {
+			t.Errorf("%q: %v", s, !want)
+		}
+	}
+}
+
+// A number of a megabyte is parsed in linear time (as float64), not exactly.
+func TestLongNumber(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"n":1` + strings.Repeat("0", 1<<20) + `}`)
+	v, _ := BodyValue("application/json", body).(map[string]any)
+	if n, ok := toNum(v["n"]); !ok || !n.IsInf() {
+		t.Errorf("%v", v["n"])
 	}
 }
 
@@ -254,6 +304,8 @@ func TestBodyValue(t *testing.T) {
 		{"application/json", `not json`, "", nil},
 		{"application/json", ``, "", nil},
 		{"application/json", `{"a":1} trailing`, "", nil},
+		{"application/json", `{"a":1} {}`, "", nil},
+		{"application/json", " {\"a\":1}\n", "a", 1.0},
 		{"application/x-www-form-urlencoded", `a=1&a=2&b=x%20y`, "a", "1"},
 		{"application/x-www-form-urlencoded", `a=1&a=2&b=x%20y`, "b", "x y"},
 		{"text/plain", `{"a":"b"}`, "", nil},
@@ -266,7 +318,7 @@ func TestBodyValue(t *testing.T) {
 			m, _ := v.(map[string]any)
 			v = m[tc.path]
 		}
-		if v != tc.want {
+		if !equal(v, tc.want) {
 			t.Errorf("%q %q: %#v, want %#v", tc.ct, tc.body, v, tc.want)
 		}
 	}

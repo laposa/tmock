@@ -3,9 +3,13 @@ package expr
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
+	"math"
+	"math/big"
 	"mime"
 	"net/url"
-	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -15,8 +19,9 @@ type Request struct {
 	Path    string            // the decoded request path, /api/proxy/… included
 	Query   map[string]string // the first value of each query parameter
 	Headers map[string]string // lower-case names; several values joined with ", "
-	// Body is the parsed body (see BodyValue): nil, bool, float64, string, []any or
-	// map[string]any.
+	// Body is the parsed body (see BodyValue): nil, bool, a number, string, []any or
+	// map[string]any. Numbers are *big.Float (see BodyValue); float64 and json.Number
+	// are accepted too.
 	Body any
 	IP   string // the client IP (spec §7.3), "" when unknown
 }
@@ -115,13 +120,14 @@ func resolve(req *Request, path []any) any {
 
 // truthy: null, false, 0 and "" are false; everything else is true.
 func truthy(v any) bool {
+	if n, ok := toNum(v); ok {
+		return n.Sign() != 0
+	}
 	switch v := v.(type) {
 	case nil:
 		return false
 	case bool:
 		return v
-	case float64:
-		return v != 0
 	case string:
 		return v != ""
 	}
@@ -136,26 +142,23 @@ func compare(op string, a, b any) bool {
 		return !equal(a, b)
 	}
 	var c int
-	switch x := a.(type) {
-	case float64:
-		y, ok := b.(float64)
+	if x, ok := toNum(a); ok {
+		y, ok := toNum(b)
 		if !ok {
 			return false
 		}
-		switch {
-		case x < y:
-			c = -1
-		case x > y:
-			c = 1
-		}
-	case string:
-		y, ok := b.(string)
-		if !ok {
+		c = x.Cmp(y)
+	} else {
+		switch x := a.(type) {
+		case string:
+			y, ok := b.(string)
+			if !ok {
+				return false
+			}
+			c = strings.Compare(x, y)
+		default:
 			return false
 		}
-		c = strings.Compare(x, y)
-	default:
-		return false
 	}
 	switch op {
 	case "<":
@@ -170,28 +173,162 @@ func compare(op string, a, b any) bool {
 	return false
 }
 
-// equal compares two JSON values by type and value: "1" is not 1.
+// equal compares two JSON values by type and value: "1" is not 1, and numbers compare
+// numerically (1 is 1.0), also inside arrays and objects.
 func equal(a, b any) bool {
+	if x, ok := toNum(a); ok {
+		y, ok := toNum(b)
+		return ok && x.Cmp(y) == 0
+	}
 	switch x := a.(type) {
 	case nil:
 		return b == nil
 	case bool:
 		y, ok := b.(bool)
 		return ok && x == y
-	case float64:
-		y, ok := b.(float64)
-		return ok && x == y
 	case string:
 		y, ok := b.(string)
 		return ok && x == y
+	case []any:
+		y, ok := b.([]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if !equal(x[i], y[i]) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		y, ok := b.(map[string]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for k, v := range x {
+			if w, found := y[k]; !found || !equal(v, w) {
+				return false
+			}
+		}
+		return true
+	case map[string]string:
+		y, ok := b.(map[string]string)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for k, v := range x {
+			if w, found := y[k]; !found || v != w {
+				return false
+			}
+		}
+		return true
 	}
-	return reflect.DeepEqual(a, b)
+	return false
+}
+
+// numPrec is the precision of numbers, in bits: integers of up to about 150 digits are
+// exact, so large ids compare correctly (float64 is exact only up to 2^53).
+const numPrec = 512
+
+// maxExactLen is the longest number text parsed exactly. Longer ones are parsed as
+// float64, which takes linear time: exact parsing of a huge number is quadratic, and a
+// body can hold a number of 10 MB.
+const maxExactLen = 200
+
+// parseNumber parses the text of a JSON number (validNumber).
+func parseNumber(raw string) (*big.Float, bool) {
+	if len(raw) <= maxExactLen {
+		if f, _, err := big.ParseFloat(raw, 10, numPrec, big.ToNearestEven); err == nil {
+			return f, true
+		}
+	}
+	// Too long, or an exponent too large for big.Float's parser: float64, where an
+	// out-of-range value is ±Inf or 0.
+	f, err := strconv.ParseFloat(raw, 64)
+	if err != nil && !errors.Is(err, strconv.ErrRange) {
+		return nil, false
+	}
+	return new(big.Float).SetPrec(numPrec).SetFloat64(f), true
+}
+
+// validNumber reports whether s is -?digits(.digits)?([eE][+-]?digits)?: a JSON number,
+// except that leading zeros are allowed.
+func validNumber(s string) bool {
+	i := 0
+	digits := func() bool {
+		start := i
+		for i < len(s) && isDigit(s[i]) {
+			i++
+		}
+		return i > start
+	}
+	if i < len(s) && s[i] == '-' {
+		i++
+	}
+	if !digits() {
+		return false
+	}
+	if i < len(s) && s[i] == '.' {
+		i++
+		if !digits() {
+			return false
+		}
+	}
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			i++
+		}
+		if !digits() {
+			return false
+		}
+	}
+	return i == len(s)
+}
+
+// toNum returns v as a number, if it is one.
+func toNum(v any) (*big.Float, bool) {
+	switch n := v.(type) {
+	case *big.Float:
+		return n, n != nil
+	case float64:
+		if math.IsNaN(n) {
+			return nil, false
+		}
+		return new(big.Float).SetPrec(numPrec).SetFloat64(n), true
+	case json.Number:
+		if !validNumber(string(n)) {
+			return nil, false
+		}
+		return parseNumber(string(n))
+	}
+	return nil, false
+}
+
+// exactNumbers replaces the json.Number values of a decoded JSON value with *big.Float.
+func exactNumbers(v any) any {
+	switch x := v.(type) {
+	case json.Number:
+		if n, ok := toNum(x); ok {
+			return n
+		}
+		return nil
+	case []any:
+		for i := range x {
+			x[i] = exactNumbers(x[i])
+		}
+	case map[string]any:
+		for k := range x {
+			x[k] = exactNumbers(x[k])
+		}
+	}
+	return v
 }
 
 // BodyValue parses a request body for $request.body (spec §7.4): JSON when the content
 // type is application/json, ends in +json, or is missing; the form map (first values)
 // for application/x-www-form-urlencoded; otherwise, and for a body that does not parse,
-// nil.
+// nil. JSON numbers are *big.Float.
 func BodyValue(contentType string, body []byte) any {
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil
@@ -205,11 +342,18 @@ func BodyValue(contentType string, body []byte) any {
 	}
 	switch {
 	case mt == "", mt == "application/json", strings.HasSuffix(mt, "+json"):
+		// Numbers are decoded exactly (json.Number, then big.Float), so that a large id
+		// is not rounded to the nearest float64.
+		dec := json.NewDecoder(bytes.NewReader(body))
+		dec.UseNumber()
 		var v any
-		if err := json.Unmarshal(body, &v); err != nil {
+		if err := dec.Decode(&v); err != nil {
 			return nil
 		}
-		return v
+		if _, err := dec.Token(); err != io.EOF {
+			return nil // something after the value
+		}
+		return exactNumbers(v)
 	case mt == "application/x-www-form-urlencoded":
 		vals, err := url.ParseQuery(string(body))
 		if err != nil {

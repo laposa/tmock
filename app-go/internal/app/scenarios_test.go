@@ -48,7 +48,10 @@ func TestScenarioValidation(t *testing.T) {
 		{"name too long", base(func(in *app.ScenarioInput) { in.Name = strings.Repeat("x", 256) }), "name", "must be 1–255 characters"},
 		{"bad method", base(func(in *app.ScenarioInput) { in.RequestMethod = ptr("FETCH") }), "requestMethod", "must be one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS"},
 		{"condition syntax", base(func(in *app.ScenarioInput) { in.RequestCondition = ptr("$request.method = 'GET'") }), "requestCondition", `column 17: "=" is not an operator; use "==" to compare`},
-		{"condition unknown name", base(func(in *app.ScenarioInput) { in.RequestCondition = ptr(" req.x == 1") }), "requestCondition", `column 1: unknown name "req": values come from $request, strings need quotes`},
+		{"condition unknown name", base(func(in *app.ScenarioInput) { in.RequestCondition = ptr("req.x == 1") }), "requestCondition", `column 1: unknown name "req": values come from $request, strings need quotes`},
+		// The position is in the text as written, leading white space included.
+		{"condition after spaces", base(func(in *app.ScenarioInput) { in.RequestCondition = ptr("   req.x == 1") }), "requestCondition", `column 4: unknown name "req": values come from $request, strings need quotes`},
+		{"condition after a line", base(func(in *app.ScenarioInput) { in.RequestCondition = ptr("\n  true &&") }), "requestCondition", `line 2, column 10: expected a value but found end of condition`},
 		{"condition unbalanced", base(func(in *app.ScenarioInput) { in.RequestCondition = ptr("($request.method == 'GET'") }), "requestCondition", `column 26: expected ")" but found end of condition`},
 		{"code too low", base(func(in *app.ScenarioInput) { in.ResponseCode = ptr(99) }), "responseCode", "must be between 100 and 599"},
 		{"code too high", base(func(in *app.ScenarioInput) { in.ResponseCode = ptr(600) }), "responseCode", "must be between 100 and 599"},

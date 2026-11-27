@@ -19,6 +19,7 @@ package expr
 
 import (
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -65,7 +66,7 @@ const (
 
 type node struct {
 	kind  nodeKind
-	value any    // nodeLiteral: nil, bool, float64 or string
+	value any    // nodeLiteral: nil, bool, *big.Float (never modified) or string
 	path  []any  // nodeRef: the segments after $request: string (key) or int (index)
 	op    string // nodeCmp: == != < <= > >=
 	kids  []node // nodeNot: 1; nodeAnd, nodeOr: 2 or more; nodeCmp: 2
@@ -106,9 +107,9 @@ const (
 type token struct {
 	kind tokKind
 	pos  int
-	text string  // tokIdent, tokOp: the text; tokString: the decoded value
-	num  float64 // tokNumber
-	raw  string  // tokNumber: as written
+	text string     // tokIdent, tokOp: the text; tokString: the decoded value
+	num  *big.Float // tokNumber
+	raw  string     // tokNumber: as written
 }
 
 func (t token) describe() string {
@@ -143,15 +144,23 @@ type parser struct {
 }
 
 func (p *parser) errAt(pos int, format string, args ...any) *Error {
+	return ErrorAt(p.src, pos, fmt.Sprintf(format, args...))
+}
+
+// ErrorAt returns the error msg at byte offset pos of src, with its line and column.
+// Callers that parse a trimmed form of what the user wrote use it to report the
+// position in the original text.
+func ErrorAt(src string, pos int, msg string) *Error {
+	pos = max(0, min(pos, len(src)))
 	line, col := 1, 1
-	for _, r := range p.src[:pos] {
+	for _, r := range src[:pos] {
 		if r == '\n' {
 			line, col = line+1, 1
 		} else {
 			col++
 		}
 	}
-	return &Error{Offset: pos, Line: line, Column: col, Msg: fmt.Sprintf(format, args...)}
+	return &Error{Offset: pos, Line: line, Column: col, Msg: msg}
 }
 
 func (p *parser) peek() token { return p.toks[p.i] }
@@ -192,11 +201,12 @@ func (p *parser) lex() error {
 			if j < len(s) && isIdentStart(s[j]) {
 				return p.errAt(j, "unexpected %q after a number", s[j])
 			}
-			f, err := strconv.ParseFloat(s[i:j], 64)
-			if err != nil || strings.HasPrefix(strings.TrimPrefix(s[i:j], "-"), ".") {
-				return p.errAt(i, "%q is not a number", s[i:j])
+			raw := s[i:j]
+			f, ok := parseNumber(raw)
+			if !validNumber(raw) || !ok || f.IsInf() {
+				return p.errAt(i, "%q is not a number", raw)
 			}
-			p.toks = append(p.toks, token{kind: tokNumber, pos: i, num: f, raw: s[i:j]})
+			p.toks = append(p.toks, token{kind: tokNumber, pos: i, num: f, raw: raw})
 			i = j
 		case c == '$':
 			j := i + 1
@@ -432,8 +442,12 @@ func (p *parser) ref() (node, error) {
 			switch {
 			case k.kind == tokString:
 				path = append(path, k.text)
-			case k.kind == tokNumber && k.num >= 0 && k.num == float64(int(k.num)) && !strings.ContainsAny(k.raw, ".eE-"):
-				path = append(path, int(k.num))
+			case k.kind == tokNumber && !strings.ContainsAny(k.raw, ".eE-"):
+				i, err := strconv.Atoi(k.raw)
+				if err != nil {
+					return node{}, p.errAt(k.pos, "index %s is too large", k.raw)
+				}
+				path = append(path, i)
 			default:
 				return node{}, p.errAt(k.pos, `expected a string or a whole number in "[]" but found %s`, k.describe())
 			}
