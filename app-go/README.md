@@ -192,6 +192,10 @@ limit. A scenario cannot set `Content-Length`, `Transfer-Encoding` or a hop-by-h
 response itself. Saving one is a `400`, and the catalog drops any that an older scenario
 still has, with a warning.
 
+The dashboard's session cookie (`tmock_session`) never reaches an upstream, and no
+upstream or scenario can set it. Other cookies pass both ways. Open security proposals,
+which are not built yet, are in spec §9.7.
+
 **M2 check** (milestone M2, spec §12): with `go run ./cmd/echo-upstream` and `make run`
 running, `TMOCK_EMAIL=… TMOCK_PASSWORD=… dev/m2-check.sh` creates a service `m2` with
 scenarios and clients, goes through every proxy row of §12 (request conditions, templates,

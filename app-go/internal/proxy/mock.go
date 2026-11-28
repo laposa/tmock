@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/laposa/tmock/app-go/internal/catalog"
+	"github.com/laposa/tmock/app-go/internal/httpx"
 	"github.com/laposa/tmock/app-go/internal/liquid"
 	"github.com/laposa/tmock/app-go/internal/logx"
 )
@@ -87,6 +88,7 @@ func writeMock(w http.ResponseWriter, sel selection, body func() []byte) {
 	}
 	setContentTypeFallback(h, b)
 	setTmockHeaders(h, StatusMocked, sel)
+	httpx.RemoveSetCookie(h, httpx.SessionCookieName) // a scenario cannot touch the dashboard session
 	if !bodyAllowed(status) {
 		// A scenario's own Content-Length or Transfer-Encoding must not survive either.
 		h.Del("Content-Length")
@@ -157,6 +159,7 @@ func modifyUpstream(resp *http.Response, sel selection, body func() []byte) {
 		replaceBody(resp, nil)
 	}
 	setTmockHeaders(h, StatusMocked, sel)
+	httpx.RemoveSetCookie(h, httpx.SessionCookieName) // a scenario cannot touch the dashboard session
 }
 
 // replaceBody gives resp a fixed body (none when nil) in place of the upstream's,

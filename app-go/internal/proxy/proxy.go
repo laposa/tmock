@@ -255,6 +255,10 @@ func (p *Proxy) rewrite(pr *httputil.ProxyRequest) {
 			h.Del(k)
 		}
 	}
+	// The dashboard's session cookie is sent on proxy requests too (same origin, Path=/).
+	// It must never reach an upstream: any user can point a service at a server of their
+	// own and collect the sessions of whoever follows a link to it (spec §7.7).
+	httpx.RemoveCookie(h, httpx.SessionCookieName)
 	if p.opts.APIKey != "" {
 		h.Set("Apikey", p.opts.APIKey)
 	}
@@ -298,6 +302,8 @@ func joinQuery(base, req string) string {
 // only the x-tmock-* headers set.
 func (p *Proxy) modifyResponse(resp *http.Response) error {
 	ex := exchangeFrom(resp.Request)
+	// Nor may an upstream set or clear the dashboard's session (spec §7.8).
+	httpx.RemoveSetCookie(resp.Header, httpx.SessionCookieName)
 	if ex.sel.scenario == nil {
 		setTmockHeaders(resp.Header, StatusProxied, ex.sel)
 		return nil
