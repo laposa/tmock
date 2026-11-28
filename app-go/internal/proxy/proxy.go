@@ -196,6 +196,11 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request) {
 		plain(w, http.StatusNotFound, "Service not found")
 		return
 	}
+	// The dashboard's session cookie is removed before anything reads the request: client
+	// conditions and scenario conditions included, not just the upstream copy.
+	// Otherwise a service owner could probe it one prefix at a time with conditions on
+	// $request.headers.cookie and read the matched scenario upstream (spec §7.7).
+	httpx.RemoveCookie(r.Header, httpx.SessionCookieName)
 	ex := exchangeFrom(r)
 	ex.service = svc
 	ex.rest = restOf(r)

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/laposa/tmock/app-go/internal/app"
+	"github.com/laposa/tmock/app-go/internal/db/dbtest"
 	"github.com/laposa/tmock/app-go/internal/httpx"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/logx/logxtest"
@@ -280,5 +281,69 @@ func TestScenarioChangedEvent(t *testing.T) {
 		if e.Attrs[k] != v {
 			t.Errorf("%s = %q, want %q", k, e.Attrs[k], v)
 		}
+	}
+}
+
+// A scenario saved before I13 can hold a response header that is now reserved, such as
+// Content-Length. Editing it must still work: a PATCH that leaves the headers alone, and
+// the dashboard form, which sends every stored header back, drop the legacy header
+// instead of failing on it. A new or changed reserved header is still rejected.
+func TestUpdateScenarioWithLegacyReservedHeader(t *testing.T) {
+	t.Parallel()
+	pool := dbtest.Migrated(t)
+	_, logger := logxtest.New()
+	a := app.New(pool, app.Options{Logger: logger, Hasher: fast})
+	ctx := context.Background()
+	if _, err := a.CreateService(ctx, ann, app.ServiceInput{Path: "svc", Name: "SVC", UpstreamURL: "http://up.test"}); err != nil {
+		t.Fatal(err)
+	}
+	legacy := func(name string) app.Scenario {
+		t.Helper()
+		s, err := a.CreateScenario(ctx, ann, app.ScenarioInput{Service: "svc", Name: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.ExecContext(ctx,
+			`UPDATE scenarios SET response_headers = '{"Content-Length":"3","X-Keep":"1"}' WHERE id = $1`, s.ID); err != nil {
+			t.Fatal(err)
+		}
+		s, err = a.GetScenario(ctx, s.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	wantKeepOnly := func(what string, h map[string]*string) {
+		t.Helper()
+		if len(h) != 1 || h["X-Keep"] == nil || *h["X-Keep"] != "1" {
+			t.Errorf("%s: headers %v, want only X-Keep: 1", what, h)
+		}
+	}
+
+	// A rename that does not touch the headers.
+	s := legacy("rename")
+	got, err := a.UpdateScenario(ctx, ann, s.ID, app.ScenarioPatch{Name: httpx.Some("renamed")})
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	wantKeepOnly("rename", got.ResponseHeaders)
+
+	// The dashboard form: every field, headers as stored.
+	s = legacy("form")
+	in := app.ScenarioInput{Service: s.Service, Name: s.Name, ResponseHeaders: s.ResponseHeaders, ResponseCode: ptr(201)}
+	got, err = a.UpdateScenario(ctx, ann, s.ID, in.Replace())
+	if err != nil {
+		t.Fatalf("form save: %v", err)
+	}
+	wantKeepOnly("form save", got.ResponseHeaders)
+
+	// A changed or new reserved header is still an error.
+	s = legacy("changed")
+	for _, h := range []map[string]*string{
+		{"Content-Length": ptr("4"), "X-Keep": ptr("1")},
+		{"Connection": ptr("close")},
+	} {
+		_, err = a.UpdateScenario(ctx, ann, s.ID, app.ScenarioPatch{ResponseHeaders: httpx.Some(h)})
+		appErr(t, err, app.KindInvalid)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"sort"
@@ -164,7 +165,7 @@ func (a *App) UpdateScenario(ctx context.Context, actor Actor, id int64, p Scena
 		RequestPath:      cur.RequestPath,
 		RequestCondition: cur.RequestCondition,
 		ResponseCode:     cur.ResponseCode,
-		ResponseHeaders:  cur.ResponseHeaders,
+		ResponseHeaders:  withoutLegacyReserved(cur.ResponseHeaders, cur.ResponseHeaders),
 		ResponseBody:     cur.ResponseBody,
 		SkipProxy:        cur.SkipProxy,
 	}
@@ -180,7 +181,10 @@ func (a *App) UpdateScenario(ctx context.Context, actor Actor, id int64, p Scena
 	patchPtr(&d.ResponseCode, p.ResponseCode)
 	patchPtr(&d.ResponseBody, p.ResponseBody)
 	if p.ResponseHeaders.Set {
-		d.ResponseHeaders = p.ResponseHeaders.Value // nil when null
+		// nil when null. The dashboard's edit form sends back every stored header, so a
+		// reserved header the scenario already had is dropped rather than rejected; a new
+		// or changed one is still an error.
+		d.ResponseHeaders = withoutLegacyReserved(p.ResponseHeaders.Value, cur.ResponseHeaders)
 	}
 	if b, ok := p.SkipProxy.Get(); ok {
 		d.SkipProxy = b
@@ -196,6 +200,39 @@ func (a *App) UpdateScenario(ctx context.Context, actor Actor, id int64, p Scena
 	}
 	a.scenarioChanged(ctx, actor, logx.ActionUpdate, s)
 	return scenarioFromStore(s), nil
+}
+
+// withoutLegacyReserved returns h without the reserved response headers
+// (httpx.ReservedResponseHeader) that stored, the scenario as saved, already has with the
+// same value. A scenario saved before I13 can hold such headers; the catalog ignores them,
+// and an update drops them instead of failing on them, so the scenario stays editable.
+// h itself is not changed.
+func withoutLegacyReserved(h, stored map[string]*string) map[string]*string {
+	var out map[string]*string
+	for name, val := range h {
+		if !httpx.ReservedResponseHeader(name) {
+			continue
+		}
+		old, ok := stored[name]
+		if !ok || !sameValue(old, val) {
+			continue
+		}
+		if out == nil {
+			out = maps.Clone(h)
+		}
+		delete(out, name)
+	}
+	if out == nil {
+		return h
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func sameValue(a, b *string) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
 }
 
 // DeleteScenario deletes the scenario with id, with its client assignments, and returns

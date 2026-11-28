@@ -62,3 +62,26 @@ func TestSessionCookieNotSet(t *testing.T) {
 		}
 	}
 }
+
+// Spec §7.7: request conditions never see the dashboard's session cookie
+// either. Otherwise a service owner could probe it one prefix at a time with conditions
+// on $request.headers.cookie and learn which one matched from X-Tmock-Scenario upstream.
+// The client's other cookies stay visible.
+func TestSessionCookieHiddenFromScenarios(t *testing.T) {
+	up := newFakeUpstream(t, "")
+	p := New(Options{Catalog: mockCatalog(up.URL,
+		store.Scenario{Name: "a-probe", RequestCondition: sp(`$request.headers.cookie == '` + httpx.SessionCookieName + `=SECRET'`),
+			SkipProxy: true, ResponseCode: ip(418), ResponseBody: sp("leak")},
+		store.Scenario{Name: "b-other", RequestCondition: sp(`$request.headers.cookie == 'app=1'`),
+			SkipProxy: true, ResponseCode: ip(202), ResponseBody: sp("ok")},
+	), Logger: slog.New(slog.DiscardHandler)})
+
+	rec := do(p, "GET", "/api/proxy/svc/x", nil, "X-Real-Ip", "10.0.0.1", "Cookie", httpx.SessionCookieName+"=SECRET")
+	if rec.Code == 418 {
+		t.Errorf("a condition saw the session cookie")
+	}
+	rec = do(p, "GET", "/api/proxy/svc/x", nil, "X-Real-Ip", "10.0.0.1", "Cookie", "app=1; "+httpx.SessionCookieName+"=SECRET")
+	if rec.Code != 202 {
+		t.Errorf("got %d, want 202: the other cookies must stay visible", rec.Code)
+	}
+}
