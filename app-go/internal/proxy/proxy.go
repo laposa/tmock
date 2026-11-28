@@ -16,6 +16,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/laposa/tmock/app-go/internal/catalog"
@@ -86,6 +87,9 @@ func New(opts Options) *Proxy {
 		ModifyResponse: p.modifyResponse,
 		ErrorHandler:   p.upstreamFailed,
 		ErrorLog:       slog.NewLogLogger(p.logger.Handler(), slog.LevelWarn),
+		// Without a pool, ReverseProxy allocates a 32 KB copy buffer for every response,
+		// nearly 90% of what a passthrough request allocates (found in I13, bench_test.go).
+		BufferPool: copyBuffers,
 	}
 	// The proxy receives the path as sent (internal/server), so it routes with a mux of
 	// its own, which cleans paths such as /api/proxy/../x by redirecting.
@@ -98,16 +102,42 @@ func New(opts Options) *Proxy {
 	return p
 }
 
-// newTransport clones http.DefaultTransport with the upstream timeout. Compression is
-// left to the client and the upstream: the transport adds no Accept-Encoding and never
-// decompresses, so compressed bodies pass through as they are (spec §7.8).
+// copyBufferSize is the size of the buffers ReverseProxy copies response bodies with
+// (its own default).
+const copyBufferSize = 32 << 10
+
+// bufferPool is an httputil.BufferPool. It pools array pointers, so that neither Get nor
+// Put allocates (pooling a []byte would box its slice header on every Put).
+type bufferPool struct{ pool sync.Pool }
+
+var copyBuffers = &bufferPool{pool: sync.Pool{New: func() any { return new([copyBufferSize]byte) }}}
+
+func (p *bufferPool) Get() []byte { return p.pool.Get().(*[copyBufferSize]byte)[:] }
+
+func (p *bufferPool) Put(b []byte) {
+	if cap(b) >= copyBufferSize {
+		p.pool.Put((*[copyBufferSize]byte)(b[:copyBufferSize]))
+	}
+}
+
+// newTransport clones http.DefaultTransport with the upstream timeout and limits (spec
+// §7.7). The timeout applies to each step before the response starts: connecting, the
+// TLS handshake and waiting for the response headers. It does not apply to the body, so
+// long streamed responses are not cut off. Response headers are limited to
+// httpx.MaxHeaderBytes.
+//
+// Compression is left to the client and the upstream: the transport adds no
+// Accept-Encoding and never decompresses, so compressed bodies pass through as they are
+// (spec §7.8).
 func newTransport(timeout time.Duration) *http.Transport {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.DialContext = (&net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}).DialContext
+	t.TLSHandshakeTimeout = timeout
 	t.ResponseHeaderTimeout = timeout
+	t.MaxResponseHeaderBytes = httpx.MaxHeaderBytes
 	t.DisableCompression = true
 	t.MaxIdleConnsPerHost = 32
 	return t
@@ -166,6 +196,11 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request) {
 		plain(w, http.StatusNotFound, "Service not found")
 		return
 	}
+	// The dashboard's session cookie is removed before anything reads the request: client
+	// conditions and scenario conditions included, not just the upstream copy.
+	// Otherwise a service owner could probe it one prefix at a time with conditions on
+	// $request.headers.cookie and read the matched scenario upstream (spec §7.7).
+	httpx.RemoveCookie(r.Header, httpx.SessionCookieName)
 	ex := exchangeFrom(r)
 	ex.service = svc
 	ex.rest = restOf(r)
@@ -225,6 +260,10 @@ func (p *Proxy) rewrite(pr *httputil.ProxyRequest) {
 			h.Del(k)
 		}
 	}
+	// The dashboard's session cookie is sent on proxy requests too (same origin, Path=/).
+	// It must never reach an upstream: any user can point a service at a server of their
+	// own and collect the sessions of whoever follows a link to it (spec §7.7).
+	httpx.RemoveCookie(h, httpx.SessionCookieName)
 	if p.opts.APIKey != "" {
 		h.Set("Apikey", p.opts.APIKey)
 	}
@@ -268,6 +307,8 @@ func joinQuery(base, req string) string {
 // only the x-tmock-* headers set.
 func (p *Proxy) modifyResponse(resp *http.Response) error {
 	ex := exchangeFrom(resp.Request)
+	// Nor may an upstream set or clear the dashboard's session (spec §7.8).
+	httpx.RemoveSetCookie(resp.Header, httpx.SessionCookieName)
 	if ex.sel.scenario == nil {
 		setTmockHeaders(resp.Header, StatusProxied, ex.sel)
 		return nil

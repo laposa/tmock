@@ -22,13 +22,14 @@ import (
 	"time"
 
 	"github.com/laposa/tmock/app-go/internal/app"
+	"github.com/laposa/tmock/app-go/internal/httpx"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/store"
 )
 
 const (
 	// CookieName is the session cookie, shared by the API and the UI.
-	CookieName = "tmock_session"
+	CookieName = httpx.SessionCookieName
 	// Lifetime is how long a session lasts after login (absolute).
 	Lifetime = 24 * time.Hour
 	// SweepInterval is how often expired sessions are deleted.

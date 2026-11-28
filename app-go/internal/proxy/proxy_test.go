@@ -365,6 +365,60 @@ func TestUpstreamTimeout(t *testing.T) {
 	}
 }
 
+// Spec §7.7 (I13): the upstream timeout also covers the TLS handshake, so an upstream
+// that accepts the connection and then says nothing is a 502, not a hung request.
+func TestUpstreamTLSHandshakeTimeout(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer c.Close() // held open, silent, until the test ends
+		}
+	}()
+	logs, logger := logxtest.New()
+	p := New(Options{Catalog: services("svc", "https://"+ln.Addr().String()), Logger: logger, UpstreamTimeout: 50 * time.Millisecond})
+	if rec := do(p, "GET", "/api/proxy/svc/", nil); rec.Code != http.StatusBadGateway {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if f := logs.Events(logx.EventUpstreamFailed); len(f) != 1 || f[0].Attrs[logx.AttrErrorType] != "timeout" {
+		t.Errorf("upstream_failed = %+v", f)
+	}
+}
+
+// Spec §7.7 (I13): upstream response headers are limited to httpx.MaxHeaderBytes.
+func TestUpstreamHeadersTooLarge(t *testing.T) {
+	big := strings.Repeat("a", 64<<10)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := 2
+		if r.URL.Path == "/big" {
+			n = 20 // 20 × 64 KB, over the 1 MB limit
+		}
+		for i := range n {
+			w.Header().Set("X-Big-"+strconv.Itoa(i), big)
+		}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer up.Close()
+	logs, logger := logxtest.New()
+	p := New(Options{Catalog: services("svc", up.URL), Logger: logger})
+	if rec := do(p, "GET", "/api/proxy/svc/small", nil); rec.Code != http.StatusOK || len(rec.Header().Get("X-Big-1")) != len(big) {
+		t.Fatalf("128 KB of headers: status %d", rec.Code)
+	}
+	if rec := do(p, "GET", "/api/proxy/svc/big", nil); rec.Code != http.StatusBadGateway {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if f := logs.Events(logx.EventUpstreamFailed); len(f) != 1 || f[0].Attrs[logx.AttrErrorType] != "response_headers_too_large" {
+		t.Errorf("upstream_failed = %+v", f)
+	}
+}
+
 // A client that goes away is not an upstream failure.
 func TestClientCancelIsNotAnUpstreamFailure(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))

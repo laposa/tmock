@@ -474,7 +474,7 @@ configuration can be reused with few edits.
 | `SERVICES_API_KEY` | — | If set, the `Apikey` header is added to every upstream request |
 | `SERVICES_UPSTREAM_OVERRIDES` | — | `path::url,path::url` overrides of upstream URLs |
 | `PROXY_REMOVE_FORWARDED_HEADERS` | `false` | `true` → strip `x-forwarded-host`, `-port`, `-proto`, `-scheme`, `x-scheme`, `x-forwarded-server` from upstream requests |
-| `PROXY_UPSTREAM_TIMEOUT` | `30s` | Timeout for upstream requests (Go duration) |
+| `PROXY_UPSTREAM_TIMEOUT` | `30s` | Timeout for upstream requests (Go duration): connecting, the TLS handshake and waiting for the response headers, each; not the body (§7.7) |
 | `PROXY_CORS_ALLOWED_ORIGINS` | *(empty = reflect any origin)* | Comma-separated allow-list for proxy CORS (§9.5) |
 | `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error` |
 | `LOG_FORMAT` | `text` | `text` \| `json` (console output; OTLP export is independent of it) |
@@ -748,6 +748,11 @@ Found in I06:
 - Header names must be HTTP tokens and must not differ only in case (`X-A` and `x-a` are the
   same header); values must not contain line breaks. All header problems are reported under
   `details.responseHeaders`.
+- Found in I13: a scenario may not set or delete (`null`) the headers that tmock frames the
+  response with, `Content-Length`, `Transfer-Encoding` and `Trailer`, nor the hop-by-hop
+  headers `Connection`, `Keep-Alive`, `Proxy-Connection`, `TE` and `Upgrade`, in any case:
+  `"Content-Length" is set by tmock and cannot be part of a scenario`. The catalog drops
+  them, with a warning, from scenarios stored before I13 (§7.8).
 - The unknown-service `404` comes after validation. A `PATCH` with `service` moves the scenario
   to that service. `?service=` with an unknown path returns `[]`.
 - The `409` message is `A scenario named "x" already exists in service "svc"`; the scenario's
@@ -1064,11 +1069,39 @@ response. The content-type fallback looks at the rendered body. A status without
     the upstream sees the client's encoding preferences and compressed bodies pass as they are.
   - `PROXY_UPSTREAM_TIMEOUT` (default `30s`) already applies, to connecting and to waiting for
     the response headers, not to the whole response, so long streamed bodies are not cut off
-    (I13 revisits the limits).
+    (limits revisited in I13, below).
   - `x-tmock-*` headers that the client or the upstream sent are dropped, so
     `x-tmock-client` and `x-tmock-scenario` only ever come from tmock. A client that goes away is not an upstream failure: no
     `tmock.proxy.upstream_failed` is logged. `error.type` is `connection_refused`, `dns`,
-    `timeout`, `connection_reset`, or the Go error type.
+    `timeout`, `connection_reset`, `response_headers_too_large` (I13), or the Go error type.
+- Found after I13 (review), fixed: the dashboard's session cookie (`tmock_session`, §9.2)
+  was forwarded to upstreams. A browser sends it on proxy requests, which share the
+  dashboard's origin and its `Path=/`. Any user can point a service at a server of their
+  own, so a link to that service collected the session of whoever followed it (`SameSite=Lax`
+  allows a top-level navigation from another site), an admin's included. The proxy now
+  removes that one cookie from the `Cookie` headers and passes the others unchanged
+  (`httpx.RemoveCookie`); a request whose only cookie was the session goes without a
+  `Cookie` header. The same applies to `Set-Cookie`, §7.8.
+- Found in I13 (timeouts and limits):
+  - `PROXY_UPSTREAM_TIMEOUT` also bounds the TLS handshake, so an upstream that accepts the
+    connection and then says nothing is a `502` (`timeout`) after the timeout, not a hung
+    request. It still does not bound the body: a stream may idle (server-sent events, long
+    polling), and the client going away ends it.
+  - Request headers are limited to 1 MB (`http.Server.MaxHeaderBytes`, `httpx.MaxHeaderBytes`):
+    the server answers `431` before any handler runs, so such a request is not logged as a
+    proxy request. Upstream response headers are limited to 1 MB as well
+    (`Transport.MaxResponseHeaderBytes`): `502`, `error.type=response_headers_too_large`.
+  - Bodies: a request body is limited (10 MB, `413`) only when a request condition reads it.
+    Otherwise request and response bodies are streamed in both directions without a limit,
+    as a transparent proxy should be. A body tmock writes is bounded by what can be saved
+    (10 MB, §6) and by the template limits (16 MB of output, §8.2).
+  - No server `ReadTimeout`: a slow upload streams to the upstream like any other body.
+    `ReadHeaderTimeout` (10 s) still bounds the headers.
+  - Benchmark (`internal/proxy/bench_test.go`, the no-scenario path with an in-memory
+    upstream): `ReverseProxy` allocated a 32 KB copy buffer for every response, nearly 90% of
+    what a request allocated. With a `BufferPool` the passthrough path is about 5 µs, 4.2 KB
+    and 55 allocations (37 KB before). The rest is the request clone in `ReverseProxy`,
+    routing and the log line; none of it stands out.
 
 ### 7.8 Upstream response modification
 
@@ -1091,11 +1124,16 @@ response. The content-type fallback looks at the rendered body. A status without
   Client and scenario names may contain any text, so control characters (line breaks) become
   spaces in `x-tmock-client` and `x-tmock-scenario`, as a header value cannot hold them, and
   in the log line, where they could forge another line.
-- Found in I11 (review), not fixed yet: a scenario's `responseHeaders` may set
-  `Content-Length` or `Transfer-Encoding`. With a replaced body (step 3) they are dropped,
-  but when the upstream body passes through, a wrong `Content-Length` truncates or aborts
-  the response. Saving such a scenario should be rejected along with the other header
-  checks (§6.4); proposed for I13.
+- Found after I13 (review), fixed: neither an upstream nor a scenario can set or clear the
+  dashboard's session cookie. Every `Set-Cookie` for `tmock_session` is removed from proxy
+  responses, passed through, modified or skip-proxy alike (`httpx.RemoveSetCookie`), so a
+  response cannot log the user out or plant a session of its choosing. Other cookies pass.
+- Found in I11 (review), fixed in I13: a scenario's `responseHeaders` could set
+  `Content-Length` or `Transfer-Encoding`. With a replaced body (step 3) they were dropped,
+  but when the upstream body passed through, a wrong `Content-Length` truncated or aborted
+  the response. Saving such a scenario is now rejected, together with `Trailer` and the
+  hop-by-hop headers (§6.4), and the catalog drops them from scenarios stored earlier, so
+  step 1 never applies them.
 - Found in I10 (review): a `responseCode` of `204` or `304` drops whichever body there is,
   the upstream's or the scenario's (writing one would abort the response). A replaced body
   drops the upstream's framing too: `Transfer-Encoding` and announced trailers. An upgrade
@@ -1246,6 +1284,8 @@ clock, structurally, in `liquid_test.go`. Error cases give the expected message.
 - Expired rows are swept hourly.
 - Outside production, a missing `SESSION_SECRET` is replaced by a random one per process, which
   means sessions do not survive a restart in development.
+- Found after I13: the proxy never forwards this cookie upstream, and no proxy response can
+  set it (§7.7, §7.8). The name is `httpx.SessionCookieName`, which `internal/auth` uses too.
 
 ### 9.3 CSRF
 
@@ -1285,6 +1325,71 @@ One line per API and UI request: `<ip> <METHOD> <url> <status> <ms>ms`, through 
 `/api/status` and `/status` are logged at level `debug`, so health checks don't flood the log.
 The line is the message of the `tmock.http.request` event (§2.4.2), with the same data as
 attributes. Proxy requests are logged by the proxy instead (§7.9), not twice.
+
+### 9.7 Open security proposals
+
+Found in the code review after I13. Each one changes behaviour that this spec asks for, so
+each needs a decision before it is built. They matter when not every dashboard user is
+fully trusted: any logged-in user, not only an admin, can create services and scenarios.
+Until a decision is made, the current behaviour stays.
+
+**P1 — `SERVICES_API_KEY` goes to every upstream** (§4.2, §7.7).
+
+- *Problem.* The key is sent as `Apikey` to every upstream, including one a user has just
+  pointed at a server of their own, where they can read it. The key is meant for the
+  team's own services, not for arbitrary hosts.
+- *Options.*
+  a. `SERVICES_API_KEY_HOSTS`: a comma-separated list of upstream host names (with an
+     optional `*.` prefix for subdomains). The key goes only to those hosts. When the
+     variable is unset, the key goes nowhere, and start-up warns that it is ignored.
+  b. A per-service switch ("send the API key"), which only an admin can turn on.
+  c. Keep it as is, and document that the key is visible to every dashboard user.
+- *Recommendation:* (a). It is configuration only, needs no migration or UI, and the
+  deployments that set the key know their upstream hosts. It is a breaking change for
+  deployments that set the key without the new variable, so the warning and the
+  migration guide (I17) must name it.
+
+**P2 — Mock and upstream responses run on the dashboard's origin** (§9.4, §7.8).
+
+- *Problem.* Proxy responses get no security headers, on purpose (§9.4), and they share the
+  dashboard's origin. A scenario (or an upstream) that answers `Content-Type: text/html`
+  with a `<script>` runs that script as whoever opens the URL. In an admin's browser it
+  can call `/api/user` and create a new admin. The cross-origin protection (§9.3) does not
+  apply, because the request is same-origin.
+- *Options.*
+  a. **A separate origin for the proxy:** an optional `PROXY_PORT` (or host name) on
+     which only `/api/proxy/` is served, while the dashboard's port serves everything
+     else. The two origins share no cookies or storage, which removes P2, makes the
+     §7.7 cookie fix unnecessary, and keeps proxy responses fully transparent. Existing
+     clients keep working until the deployment moves them to the new port.
+  b. `Content-Security-Policy: sandbox` on the responses tmock writes itself (skip-proxy
+     and replaced bodies), plus on passed-through responses whose type is HTML. Scripts
+     then run in an opaque origin with no access to the dashboard. This breaks mocks
+     whose purpose is to serve working HTML or JavaScript to a browser app under test,
+     and it changes passthrough responses, against §9.4's "must stay transparent".
+  c. Keep it as is, and document that dashboard users must be trusted as much as admins.
+- *Recommendation:* (a), with the dashboard's own port still serving `/api/proxy/` by
+  default, so nothing changes until a deployment sets `PROXY_PORT`, and with the
+  migration guide recommending it. In I16 (hardening) if accepted.
+
+**P3 — A password change does not end the user's other sessions** (§9.2).
+
+- *Problem.* When an admin resets the password of an account that may be compromised, or a
+  user changes their own, every existing session of that user stays valid for up to 24
+  hours.
+- *Proposal.*
+  - An admin's password change (`PATCH /api/user/{id}`, the Accounts page) deletes all of
+    that user's sessions.
+  - A change through the profile (`PATCH /api/user/profile`, My Account) deletes all of the
+    user's other sessions and keeps the current one, so the user stays logged in.
+  - Both happen in the transaction that stores the new hash, and are logged as part of
+    `tmock.entity.changed`, with a new attribute `tmock.sessions.deleted`.
+  - Demoting an admin needs no change: it already takes effect on the next request (§9.2).
+- *Recommendation:* adopt; it is small and has no compatibility cost. In I16.
+
+Also found, not proposed yet: login has no rate limit, and every attempt costs one PBKDF2
+hash (600,000 iterations, §9.1), so anyone, without an account, can load the CPU with
+login requests. A per-IP limit belongs with the I16 hardening.
 
 ---
 
@@ -1649,6 +1754,7 @@ a compatibility commitment.
 | Scenario order | Undefined | By name; the first matching scenario in the list wins (§7.5) |
 | Path matching | Compared the whole rest of the URL, query string included: a scenario with path `orders` did not match `/api/proxy/users/orders?page=2` or `…/orders/` | Compares only the path, without the query string and without leading or trailing `/`; case-insensitive in both (§7.5) |
 | Headers | `x-tmock-*` missing on skip-proxy responses | Always present |
+| Scenario headers | Any header, including `Content-Length` | `Content-Length`, `Transfer-Encoding`, `Trailer` and hop-by-hop headers are rejected: tmock frames the response (§6.4) |
 | `PROXY_REMOVE_FORWARDED_HEADERS` | Any value, even `false`, enabled it | Parsed as a boolean |
 | Conditions | IPv4-only CIDR; JS regex syntax | IPv4 and IPv6; RE2 regex syntax |
 | Config | `NODE_ENV` | `TMOCK_ENV` |
@@ -2172,7 +2278,7 @@ Update this table as issues are created and closed.
 | I10 | Matching and mocking | | In review | `condition.Compile`/`Matcher` (compiled once per catalog build; mapped prefixes unmapped); empty or broken enabled conditions left out of the catalog; scenarios with a request condition skipped until I11; content-type fallback only for bodies tmock writes; `x-tmock-*` always tmock's own, names made header-safe; 204/304 mocks without a body; proxy CORS wraps every proxy response; `[client …; scenario …; mocked: …]` in the log, `tmock.mocked` and `tmock.proxy_skipped` |
 | I11 | Request-condition expressions | | In review | `internal/expr` (lexer, recursive-descent parser with positions, evaluator; depth limit 64; fuzzed); numbers exact to 512 bits; `$request.path` is the full path; body JSON also without a content type; parsed once per catalog build, a broken stored condition leaves its scenario out; the condition is evaluated last and the body read lazily, buffered bodies forwarded with `Content-Length`; save errors are `column N: …` (in the text as written) next to the field; framing headers in scenarios noted for I13 |
 | I12 | Liquid template subset | | In review | `internal/liquid` (tokenizer with whitespace control, raw and nested comments; parser with line and column; renderer bounded by steps, bytes and depth; fuzzed); positions in the body as stored, marker included; a failed render sends the body as stored and logs `tmock.template.render_failed`; templates parsed once per catalog build, a stored broken one keeps its scenario and takes the fallback; rendered when the response is written; `time/tzdata` in `internal/liquid`, tested with `TZ=Europe/Dublin` in a child process; `YYYY-MM-DD` is local midnight |
-| I13 | Proxy hardening (M2) | | Planned | |
+| I13 | Proxy hardening (M2) | | In review | end-to-end proxy tests over real HTTP (clients, conditions, expressions, templates), replayed concurrently under `-race`; `ReverseProxy.BufferPool` (37 KB → 4.2 KB per passthrough request); `PROXY_UPSTREAM_TIMEOUT` also on the TLS handshake; 1 MB header limits both ways (`431`; `502` with `response_headers_too_large`); framing and hop-by-hop headers rejected in scenarios and dropped from stored ones (`httpx.ReservedResponseHeader`); `dev/m2-check.sh` for the §12 rows; after review: the session cookie is never forwarded upstream nor set by a proxy response, and security proposals P1–P3 in §9.7 |
 | I14 | OpenAPI and swagger | | Planned | |
 | I15 | Legacy import | | Planned | |
 | I16 | Hardening and polish | | Planned | |

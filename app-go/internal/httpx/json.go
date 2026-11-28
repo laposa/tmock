@@ -13,8 +13,13 @@ import (
 	"strings"
 )
 
-// MaxBodyBytes is the request body limit (spec §6).
+// MaxBodyBytes is the request body limit (spec §6), and the limit of a proxy request
+// body that a request condition needs to read (spec §7.7).
 const MaxBodyBytes = 10 << 20
+
+// MaxHeaderBytes limits the headers of a request to tmock (the server answers 431 above
+// it) and of a response from an upstream (the proxy answers 502). Spec §7.7, I13.
+const MaxHeaderBytes = 1 << 20
 
 // DecodeJSON reads the request body, which must be one JSON object, into dst (a pointer
 // to a struct). Unknown fields are rejected (spec §6). The errors are *Error values ready

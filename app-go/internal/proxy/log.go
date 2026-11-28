@@ -113,6 +113,9 @@ func errorType(err error) string {
 		return "connection_reset"
 	case errors.As(err, &netErr) && netErr.Timeout():
 		return "timeout"
+	case strings.Contains(err.Error(), "response headers exceeded"):
+		// MaxResponseHeaderBytes; net/http has no error value or type for it.
+		return "response_headers_too_large"
 	}
 	return fmt.Sprintf("%T", err)
 }

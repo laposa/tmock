@@ -4,7 +4,7 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I12** (templates). You can log in and manage services, scenarios,
+- **Status:** iteration **I13** (proxy hardening, milestone M2). You can log in and manage services, scenarios,
   clients (with the condition builder, scenario assignments and client tokens), and, as an
   admin, user accounts; every user can edit their own account. The REST API has login,
   logout, `me` and CRUD on `/api/service`, `/api/scenario`, `/api/client` (with client tokens)
@@ -182,6 +182,35 @@ request). Every change made in the dashboard or the REST API invalidates it, so 
 request sees the change; at `LOG_LEVEL=debug` each rebuild logs `tmock.catalog.rebuilt`. With
 several replicas, each has its own cache: changes reach the others within `CACHE_TTL`.
 
+Proxy limits (spec §7.7): `PROXY_UPSTREAM_TIMEOUT` (default `30s`) bounds connecting to the
+upstream, the TLS handshake and the wait for its response headers, but not a streamed body.
+Request headers over 1 MB get `431`; upstream response headers over 1 MB give a `502`
+(`error.type=response_headers_too_large`). A request body is only limited (10 MB, `413`) when
+a request condition has to read it; otherwise bodies are streamed in both directions without a
+limit. A scenario cannot set `Content-Length`, `Transfer-Encoding` or a hop-by-hop header
+(`Connection`, `Keep-Alive`, `Proxy-Connection`, `TE`, `Trailer`, `Upgrade`): tmock frames the
+response itself. Saving one is a `400`, and the catalog drops any that an older scenario
+still has, with a warning.
+
+The dashboard's session cookie (`tmock_session`) never reaches an upstream, and no
+upstream or scenario can set it. Other cookies pass both ways. Open security proposals,
+which are not built yet, are in spec §9.7.
+
+**M2 check** (milestone M2, spec §12): with `go run ./cmd/echo-upstream` and `make run`
+running, `TMOCK_EMAIL=… TMOCK_PASSWORD=… dev/m2-check.sh` creates a service `m2` with
+scenarios and clients, goes through every proxy row of §12 (request conditions, templates,
+cache, scenario order, path matching, `x-tmock-*` headers, forwarded headers, RE2 and IPv6
+conditions, CORS), printing what to expect next to each result, and deletes what it
+created. The settings that need a restart are listed at the end. The same combinations are
+tested automatically in `internal/proxy/e2e_test.go`, over real HTTP and concurrently (run it
+with `-race`).
+
+**Proxy benchmark** (the no-scenario path, with an in-memory upstream):
+`go test ./internal/proxy -run '^$' -bench Passthrough -benchmem`. On a Ryzen 7 9800X3D
+(I13): about 5 µs, 4.2 KB and 55 allocations per request, or 66 allocations with three
+clients checked. Before I13, a 32 KB copy buffer per response made it 37 KB per request.
+These are now pooled. The rest is `ReverseProxy` cloning the request, routing and the log line.
+
 Without `SESSION_SECRET`, sessions end when the server restarts (spec §9.2); set one in `.env` to
 keep them.
 
@@ -321,6 +350,7 @@ cmd/tmock/            the binary: config, logging set-up, lifecycle; the only pa
 cmd/echo-upstream/    dev tool: a fake upstream that echoes each request as JSON
 dev/vendorjs/         `make vendor-js`: re-downloads and verifies vendored JavaScript
 dev/otelcol.yaml      collector config for `make otel-up`
+dev/m2-check.sh       the M2 check: every proxy row of spec §12 against a running tmock
 internal/api/         REST handlers (health check, login, logout, me, services, scenarios,
                       clients and the token-or-user guard)
 internal/app/         use cases shared by the REST API and the UI; app.Error (spec §2.1, §6.2)
