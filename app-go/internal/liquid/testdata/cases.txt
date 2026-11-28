@@ -1,0 +1,465 @@
+Liquid subset cases (spec §8.4), with hand-checked expected output.
+
+A case starts with a line "=== <name>". The template follows, up to a line "---" (the
+expected output follows) or "--- error" (the expected error message follows). Trailing
+line breaks of the template and of the expected text are not part of them.
+
+The cases render with 'now' at 2024-02-29T13:05:09.123Z (a Thursday; Unix 1709211909)
+and dates shown in UTC. The same examples against the real clock are in liquid_test.go.
+
+=== plain text
+Hello {"a": 1} 100% {not a tag} { {
+---
+Hello {"a": 1} 100% {not a tag} { {
+
+=== literals
+{{ "a" }}{{ 'b' }}{{ 1 }}{{ -2 }}{{ 1.5 }}{{ true }}{{ false }}{{ nil }}{{ empty }}|
+---
+ab1-21.5truefalse|
+
+=== string escapes
+{{ "a\"b" }}|{{ 'it\'s' }}|{{ "tab\there" }}|{{ "}}" }}
+---
+a"b|it's|tab	here|}}
+
+=== undefined variables render as nothing
+[{{ nope }}][{{ nope.deep[0].x }}]
+---
+[][]
+
+=== unknown filters render as nothing
+[{{ "x" | nonexistent }}][{{ "x" | nonexistent | append: "y" }}]
+---
+[][y]
+
+=== empty output
+[{{ }}][{{- -}}]
+---
+[][]
+
+=== legacy example: validFrom
+{% assign seconds = 5 | times: 24 | times: 60 | times: 60 %}{"validFrom": "{{ 'now' | date: "%s" | plus: seconds | date: "%Y-%m-%d" }}"}
+---
+{"validFrom": "2024-03-05"}
+
+=== legacy example: now as a timestamp
+{{ 'now' | date: "%Y-%m-%dT%H:%M:%SZ" }}
+---
+2024-02-29T13:05:09Z
+
+=== assign with filters
+{% assign n = 2 | plus: 3 | times: 4 %}{{ n }}
+---
+20
+
+=== whitespace control around tags
+<ul>
+  {%- for i in (1..2) %}
+  <li>{{ i }}</li>
+  {%- endfor %}
+</ul>
+---
+<ul>
+  <li>1</li>
+  <li>2</li>
+</ul>
+
+=== whitespace control around output
+a  {{- "b" -}}  c
+  {{- "d" }}
+---
+abcd
+
+=== if elsif else
+{% assign x = 5 %}{% if x > 10 %}big{% elsif x > 3 %}mid{% else %}small{% endif %}
+---
+mid
+
+=== unless
+{% unless false %}a{% else %}b{% endunless %}{% unless 1 == 1 %}c{% else %}d{% endunless %}
+---
+ad
+
+=== only nil and false are false
+{% if "" %}a{% endif %}{% if 0 %}b{% endif %}{% if nil %}c{% endif %}{% if false %}d{% endif %}{% if nope %}e{% endif %}
+---
+ab
+
+=== and and or are evaluated right to left
+{% if true or false and false %}1{% else %}0{% endif %}{% if false and true or true %}1{% else %}0{% endif %}
+---
+10
+
+=== comparisons
+{% if 1 == 1.0 %}a{% endif %}{% if "1" == 1 %}b{% endif %}{% if 2 <> 3 %}c{% endif %}{% if "abc" < "abd" %}d{% endif %}{% if 2 >= 2 %}e{% endif %}{% if "a" < 1 %}f{% endif %}{% if 2 != 2 %}g{% endif %}{% if 1.5 <= 2 %}h{% endif %}
+---
+acdeh
+
+=== contains
+{% assign a = "x,y" | split: "," %}{% if a contains "y" %}a{% endif %}{% if "hello" contains "ell" %}b{% endif %}{% if a contains "z" %}c{% endif %}{% if nope contains "x" %}d{% endif %}
+---
+ab
+
+=== empty and blank
+{% assign e = "" %}{% if e == empty %}a{% endif %}{% if "  " == blank %}b{% endif %}{% if nil == blank %}c{% endif %}{% if "x" == empty %}d{% endif %}{% assign arr = "" | split: "," %}{% if arr == empty %}e{% endif %}{% if "  " == empty %}f{% endif %}
+---
+abce
+
+=== case
+{% assign v = "b" %}{% case v %}{% when "a" %}A{% when "b", "c" %}BC{% else %}X{% endcase %}{% case 4 %}{% when 1 or 2 %}low{% else %}other{% endcase %}{% case 9 %}{% when 1 %}one{% endcase %}.
+---
+BCother.
+
+=== case ignores what precedes the first when
+{% case 1 %}
+  ignored {% when 1 %}one{% endcase %}
+---
+one
+
+=== for over a range
+{% for i in (1..3) %}{{ i }}{% endfor %}|{% for i in (3..1) %}{{ i }}{% endfor %}|{% for i in (-1..1) %}{{ i }}{% endfor %}
+---
+123||-101
+
+=== forloop
+{% for i in (1..3) %}{{ forloop.index }}{{ forloop.index0 }}{{ forloop.first }}{{ forloop.last }}{{ forloop.length }};{% endfor %}
+---
+10truefalse3;21falsefalse3;32falsetrue3;
+
+=== limit offset reversed
+{% for i in (1..10) offset: 2 limit: 3 %}{{ i }}{% endfor %}|{% for i in (1..10) limit: 3 offset: 2 reversed %}{{ i }}{% endfor %}|{% for i in (1..3) reversed %}{{ i }}{% endfor %}|{% for i in (1..3) offset: 5 %}{{ i }}{% endfor %}
+---
+345|543|321|
+
+=== for else
+{% assign none = "" | split: "," %}{% for x in none %}{{ x }}{% else %}nothing{% endfor %}|{% for x in nope %}a{% else %}b{% endfor %}
+---
+nothing|b
+
+=== break and continue
+{% for i in (1..10) %}{% if i == 2 %}{% continue %}{% endif %}{% if i == 5 %}{% break %}{% endif %}{{ i }}{% endfor %}
+---
+134
+
+=== break leaves the inner loop only
+{% for i in (1..2) %}{% for j in (1..3) %}{% if j == 2 %}{% break %}{% endif %}{{ i }}{{ j }} {% endfor %}{% endfor %}|
+---
+11 21 |
+
+=== nested loops and variable bounds
+{% assign n = 2 %}{% for i in (1..n) %}{% for j in (i..n) %}{{ i }}{{ j }} {% endfor %}{% endfor %}|
+---
+11 12 22 |
+
+=== for over an array
+{% assign words = "c b a" | split: " " %}{% for w in words %}{{ w }}{% unless forloop.last %}-{% endunless %}{% endfor %}
+---
+c-b-a
+
+=== a string is one item
+{% for c in "abc" %}[{{ c }}]{% endfor %}
+---
+[abc]
+
+=== capture
+{% capture greeting %}Hi {{ "bob" | capitalize }}!{% endcapture %}{{ greeting | upcase }}
+---
+HI BOB!
+
+=== assign in a loop is kept after it
+{% assign total = 0 %}{% for i in (1..4) %}{% assign total = total | plus: i %}{% endfor %}{{ total }}
+---
+10
+
+=== comment and raw
+a{% comment %} {{ ignored }} {% if %} {% endcomment %}b{% raw %}{{ kept }} {% if %}{% endraw %}c{%- comment -%} x {%- endcomment -%} d
+---
+ab{{ kept }} {% if %}cd
+
+=== comments nest
+{% comment %}a{% comment %}b{% endcomment %}c{% endcomment %}d
+---
+d
+
+=== lookups
+{% assign a = "x,y,z" | split: "," %}{{ a[0] }}{{ a[-1] }}{{ a.size }}{{ a.first }}{{ a.last }}{% assign i = 1 %}{{ a[i] }}{{ a[7] }}{% assign s = "héllo" %}{{ s.size }}{% assign r = (1..4) %}{{ r.size }}{{ r.last }}{{ r[1] }}
+---
+xz3xzy5442
+
+=== math
+{{ 4 | plus: 2 }} {{ 4 | minus: 6 }} {{ 3 | times: 1.5 }} {{ 7 | divided_by: 2 }} {{ 7 | divided_by: 2.0 }} {{ -7 | divided_by: 2 }} {{ 7 | modulo: 3 }} {{ -7 | modulo: 3 }} {{ 5.5 | modulo: 2 }}
+---
+6 -2 4.5 3 3.5 -4 1 -1 1.5
+
+=== more math
+{{ -3 | abs }} {{ -2.5 | abs }} {{ 1.2 | ceil }} {{ 1.8 | floor }} {{ 2.5 | round }} {{ 3.14159 | round: 2 }} {{ 5 | at_least: 7 }} {{ 5 | at_most: 3 }} {{ 5 | at_least: 2 }} {{ 7 | round }}
+---
+3 2.5 2 1 3 3.14 7 3 5 7
+
+=== numbers in strings
+{{ "3" | plus: "4" }} {{ "1.5" | plus: 1 }} {{ "abc" | plus: 1 }} {{ " 2 " | times: 3 }}
+---
+7 2.5 1 6
+
+=== number formatting
+{{ 0.1 | plus: 0.2 }} {{ 1.5 | times: 2 }} {{ 10 | divided_by: 4.0 }} {{ 9223372036854775807 | plus: 1 }} {{ 2.0 }}
+---
+0.30000000000000004 3 2.5 9223372036854776000 2
+
+=== string filters
+{{ "a" | append: "b" | prepend: "c" }} {{ "MiXed" | downcase }} {{ "MiXed" | upcase }} {{ "hELLO world" | capitalize }} {{ 12 | append: 3 }}
+---
+cab mixed MIXED Hello world 123
+
+=== strip
+[{{ "  a b  " | strip }}][{{ "  a " | lstrip }}][{{ " a  " | rstrip }}]
+---
+[a b][a ][ a]
+
+=== replace and remove
+{{ "a-b-c" | replace: "-", "+" }} {{ "a-b-c" | replace_first: "-", "+" }} {{ "a-b-c" | remove: "-" }} {{ "a-b-c" | remove_first: "-" }}
+---
+a+b+c a+b-c abc ab-c
+
+=== split and join
+{{ "a,b,c" | split: "," | join: " / " }} {{ "abc" | split: "" | join: "." }} {{ "a b" | split: " " | size }} {{ "a,,b,," | split: "," | size }} {{ (1..3) | join }}
+---
+a / b / c a.b.c 2 3 1 2 3
+
+=== truncate
+{{ "Ground control to Major Tom." | truncate: 20 }}|{{ "Ground control" | truncate: 25 }}|{{ "Ground control to Major Tom." | truncate: 25, ", and so on" }}|{{ "abcdef" | truncate: 3, "" }}|{{ "héllo wörld" | truncate: 8 }}
+---
+Ground control to...|Ground control|Ground control, and so on|abc|héllo...
+
+=== truncatewords
+{{ "Ground control to Major Tom." | truncatewords: 3 }}|{{ "Ground control to Major Tom." | truncatewords: 3, "--" }}|{{ "one two" | truncatewords: 5 }}|{{ "a b c" | truncatewords: 0 }}
+---
+Ground control to...|Ground control to--|one two|a...
+
+=== slice
+{{ "Liquid" | slice: 0 }} {{ "Liquid" | slice: 2 }} {{ "Liquid" | slice: 2, 5 }} {{ "Liquid" | slice: -3, 2 }} {{ "a,b,c,d" | split: "," | slice: 1, 2 | join: "" }} {{ "Liquid" | slice: 10 }}|
+---
+L q quid ui bc |
+
+=== escape
+{{ "<p class=\"x\">Tom & Jerry's</p>" | escape }}
+---
+&lt;p class=&#34;x&#34;&gt;Tom &amp; Jerry&#39;s&lt;/p&gt;
+
+=== url_encode and url_decode
+{{ "john@liquid.com a/b?c=d&e~(x)" | url_encode }} {{ "%27Stop%21%27+said+Fred" | url_decode }}
+---
+john%40liquid.com+a%2Fb%3Fc%3Dd%26e~(x) 'Stop!' said Fred
+
+=== newlines
+{% capture t %}a
+b{% endcapture %}{{ t | newline_to_br }}|{{ t | strip_newlines }}
+---
+a<br />
+b|ab
+
+=== array filters
+{% assign a = "3,1,2,1" | split: "," %}{{ a | first }}{{ a | last }}{{ a | size }} {{ a | reverse | join: "" }} {{ a | sort | join: "" }} {{ a | uniq | join: "" }}
+---
+314 1213 1123 312
+
+=== sort numbers and strings
+{% assign n = (1..3) | reverse %}{{ n | sort | join: "," }} {{ "10,9,a" | split: "," | sort | join: "," }} {{ (1..4) | join: "-" }}
+---
+1,2,3 10,9,a 1-2-3-4
+
+=== concat compact map
+{% assign a = "a,b" | split: "," %}{% assign b = "c" | split: "," %}{{ a | concat: b | join: "" }}{% assign x = (1..3) | map: "nope" | compact | size %}{{ x }}
+---
+abc0
+
+=== first last and size of strings
+{{ "héllo" | first }}{{ "héllo" | last }}{{ "héllo" | size }}{{ 5 | size }}
+---
+ho50
+
+=== default
+{{ nope | default: "d" }} {{ "" | default: "d" }} {{ false | default: "d" }} {{ false | default: "d", allow_false: true }} {{ 0 | default: "d" }} {{ "x" | default: "d" }}
+---
+d d d false 0 x
+
+=== json
+{{ "a\"b" | json }} {{ 1.5 | json }} {{ "x,y" | split: "," | json }} {{ nope | json }} {{ "<&>" | json }} {{ 3 | json }}
+---
+"a\"b" 1.5 ["x","y"] null "<&>" 3
+
+=== json indented
+{{ "x,y" | split: "," | json: 2 }}
+---
+[
+  "x",
+  "y"
+]
+
+=== date directives
+{{ 'now' | date: "%a %A %b %B %d %e %H %I %j %k %l %L %m %M %p %P %S %u %w %y %Y %z %Z %%" }}
+---
+Thu Thursday Feb February 29 29 13 01 060 13  1 123 02 05 PM pm 09 4 4 24 2024 +0000 UTC %
+
+=== date without padding
+{{ "2024-03-05" | date: "%-d/%-m/%y %e|%-e %H:%M %-j %-H" }}
+---
+5/3/24  5|5 00:00 65 0
+
+=== date inputs
+{{ 0 | date: "%Y-%m-%d %H:%M:%S" }}|{{ "1709211909" | date: "%s" }}|{{ 1709211909.5 | date: "%S.%L" }}|{{ "2024-02-29T15:05:09+02:00" | date: "%H:%M %z" }}|{{ "today" | date: "%Y" }}|{{ "not a date" | date: "%Y" }}|{{ "2024-01-01" | date: "" }}|{{ 'now' | date: "%F %Q" }}
+---
+1970-01-01 00:00:00|1709211909|09.500|13:05 +0000|2024|not a date|2024-01-01|%F %Q
+
+=== date with an integer result of plus
+{{ 'now' | date: "%s" | plus: 86400 | date: "%A" }}
+---
+Friday
+
+=== extreme numbers saturate instead of wrapping
+{{ "abcdef" | truncate: -9223372036854775808 }}|{{ "abcdef" | truncate: -100000000000000000000.0 }}|{% for i in (1..3) limit: 100000000000000000000.0 %}{{ i }}{% endfor %}|{{ (1..100000000000000000000.0) | size }}
+---
+...|...|123|9223372036854775807
+
+=== limit 0 at the lowest start
+{% for i in (-9223372036854775808..-9223372036854775800) limit: 0 %}{{ i }}{% else %}none{% endfor %}|{% for i in (-9223372036854775808..-9223372036854775807) limit: 1 %}{{ i }}{% endfor %}
+---
+none|-9223372036854775808
+
+=== quotes in comment and raw tags are free text
+{% comment don't %}x{% endcomment %}a{% comment ' %}{% endcomment ' %}b{% raw ' %}'{% endraw %}
+---
+ab'
+
+=== error: block not closed
+{% if x %}a
+--- error
+line 1, column 1: {% if %} is not closed: expected {% endif %}
+
+=== error: output not closed
+ok {{ x
+--- error
+line 1, column 4: "{{" is not closed: expected "}}"
+
+=== error: string not closed inside output
+{{ "abc }}
+--- error
+line 1, column 1: "{{" is not closed: expected "}}"
+
+=== error: unexpected end tag
+a
+{% endif %}
+--- error
+line 2, column 1: unexpected {% endif %}
+
+=== error: elsif after else
+{% if true %}{% else %}{% elsif false %}{% endif %}
+--- error
+line 1, column 24: unexpected {% elsif %}
+
+=== error: end tag of another block
+{% for i in (1..2) %}{% endif %}{% endfor %}
+--- error
+line 1, column 22: unexpected {% endif %}
+
+=== error: unknown tag
+{% foo %}
+--- error
+line 1, column 1: unknown tag "foo"
+
+=== error: assign without =
+{% assign x 1 %}
+--- error
+line 1, column 13: expected "=" after the variable name, but found "1"
+
+=== error: = in a condition
+{% if a = 1 %}{% endif %}
+--- error
+line 1, column 9: "=" is not an operator; use "==" to compare
+
+=== error: for without in
+{% for i (1..3) %}{% endfor %}
+--- error
+line 1, column 10: expected "in" after the variable name, but found "("
+
+=== error: for modifier without colon
+{% for x in (1..3) limit 2 %}{% endfor %}
+--- error
+line 1, column 26: expected ":" after limit, but found "2"
+
+=== error: range without a bound
+{{ (1..) }}
+--- error
+line 1, column 8: expected a value but found ")"
+
+=== error: raw not closed
+{% raw %}x
+--- error
+line 1, column 1: {% raw %} is not closed: expected {% endraw %}
+
+=== error: comment not closed
+{% comment %}{% comment %}{% endcomment %}
+--- error
+line 1, column 1: {% comment %} is not closed: expected {% endcomment %}
+
+=== error: position counts characters on later lines
+é
+  {{ | }}
+--- error
+line 2, column 6: expected a value but found "|"
+
+=== error: filter name missing
+{{ a | }}
+--- error
+line 1, column 8: expected a filter name after "|", but found nothing
+
+=== error: name missing after a dot
+{{ a. }}
+--- error
+line 1, column 7: expected a name after ".", but found nothing
+
+=== error: unexpected character
+{{ a & b }}
+--- error
+line 1, column 6: unexpected character '&'
+
+=== error: two values
+{{ a b }}
+--- error
+line 1, column 6: unexpected "b"
+
+=== error: tag without a name
+{% %}
+--- error
+line 1, column 1: expected a tag name after {%
+
+=== render error: division by zero
+{{ 10 | divided_by: 0 }}
+--- error
+line 1, column 9: divided_by: division by zero
+
+=== render error: modulo by zero
+{{ 1 | modulo: 0.0 }}
+--- error
+line 1, column 8: modulo: division by zero
+
+=== render error: bad url escape
+{{ "%zz" | url_decode }}
+--- error
+line 1, column 12: url_decode: invalid escape "%zz"
+
+=== render error: too many steps
+{% for i in (1..2000000) %}{% endfor %}
+--- error
+line 1, column 1: the template takes more than 1000000 steps
+
+=== render error: an expanding filter is checked before it runs
+{% capture nl %}
+{% endcapture %}{% for i in (1..22) %}{% assign nl = nl | append: nl %}{% endfor %}{{ nl | newline_to_br }}
+--- error
+line 2, column 92: the template produces more than 16 MB
+
+=== render error: too much output
+{% assign s = "xxxxxxxxxx" %}{% for i in (1..30) %}{% assign s = s | append: s %}{% endfor %}
+--- error
+line 1, column 70: the template produces more than 16 MB

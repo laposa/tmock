@@ -4,14 +4,15 @@ The Go rewrite of Tmock: REST API, proxy/mock engine and server-rendered dashboa
 module and one binary. The legacy Node app lives in `../api` and `../app` until cutover.
 
 - **Why and what:** [../intent.md](../intent.md) and [../spec.md](../spec.md).
-- **Status:** iteration **I11** (request conditions). You can log in and manage services, scenarios,
+- **Status:** iteration **I12** (templates). You can log in and manage services, scenarios,
   clients (with the condition builder, scenario assignments and client tokens), and, as an
   admin, user accounts; every user can edit their own account. The REST API has login,
   logout, `me` and CRUD on `/api/service`, `/api/scenario`, `/api/client` (with client tokens)
   and `/api/user` (with `/api/user/profile`). `/api/proxy/{service}/…` matches clients by
   their conditions, picks a scenario (including its request condition) and mocks the
-  response (or forwards the request unchanged). Templates (I12) are not rendered yet.
-  Progress is tracked in spec §16.
+  response (or forwards the request unchanged); a body that starts with
+  `<% TEMPLATE: LiquidJS %>` is a Liquid template, rendered on every request. Progress is
+  tracked in spec §16.
 
 ## Prerequisites
 
@@ -151,6 +152,27 @@ parentheses. With the "boom" scenario above:
 4. A body over 10 MB gets `413` when a condition needs it, and is streamed otherwise.
 
 The parser has a fuzz test: `go test -run '^$' -fuzz FuzzParse -fuzztime 60s ./internal/expr`.
+
+Response templates (spec §8): a body that starts with `<% TEMPLATE: LiquidJS %>` is a
+Liquid template (a subset: output with filters, `assign`, `capture`, `if`, `unless`,
+`case`, `for`, `raw`, `comment`), rendered with an empty context on every request. With
+the "boom" scenario above (Condition off, Skip Proxy on):
+
+1. Set its Body to
+   `<% TEMPLATE: LiquidJS %>{% assign seconds = 5 | times: 24 | times: 60 | times: 60 %}{"validFrom": "{{ 'now' | date: "%s" | plus: seconds | date: "%Y-%m-%d" }}"}`
+   and Save. `curl -i localhost:3000/api/proxy/echo/a` answers `{"validFrom": "<today + 5 days>"}`.
+   Change `5` to `10` and Save: the next request shows today + 10 days.
+2. Dates are shown in the process's time zone: `TZ=Europe/Dublin make run`, and
+   `{{ 'now' | date: "%H:%M %Z" }}` shows Dublin time (`GMT` or `IST`).
+3. Break the syntax (`{{ 1 | }}`) and Save: the editor shows
+   `line 1, column 32: expected a filter name after "|", but found nothing` under the body,
+   and the REST API answers `400` with it in `details.responseBody`. Positions count the
+   marker.
+4. A template that fails while rendering (`{{ 1 | divided_by: 0 }}`) is sent as stored,
+   marker included, and logs `tmock.template.render_failed` at `warn`.
+
+The cases with their expected output are in `internal/liquid/testdata/cases.txt`; the
+template parser has a fuzz test too: `go test -run '^$' -fuzz FuzzParse -fuzztime 60s ./internal/liquid`.
 
 Each proxy request is logged once, as `tmock.proxy.request` (`<ip> <METHOD> <url> <status>
 [client …; scenario …; mocked: …] <ms>ms <size>`); a failing upstream answers `502 Bad Gateway` and logs
@@ -310,6 +332,8 @@ internal/config/      configuration and .env loading (spec §4)
 internal/db/          connection pool, typed errors, migration runner and migrations (spec §3.3, §5)
 internal/db/dbtest/   per-test schemas for DB integration tests
 internal/expr/        request-condition expressions: parser with error positions, evaluation (spec §7.4)
+internal/liquid/      the Liquid template subset of response bodies: parser, bounded renderer,
+                      filters, strftime dates (spec §8)
 internal/password/    PBKDF2 password hashing (spec §9.1)
 internal/proxy/       /api/proxy/: service lookup, scenario selection, mocking, upstream forwarding,
                       proxy log (spec §7)

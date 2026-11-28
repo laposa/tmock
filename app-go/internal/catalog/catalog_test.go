@@ -10,6 +10,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/laposa/tmock/app-go/internal/liquid"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/logx/logxtest"
 	"github.com/laposa/tmock/app-go/internal/store"
@@ -24,7 +25,7 @@ func sampleData() store.CatalogData {
 				// The database's order (by name) is kept, not re-sorted in Go.
 				Scenarios: []store.Scenario{
 					{ID: 7, Name: "B", RequestMethod: ptr("GET"), RequestCondition: ptr("$request.query.a == '1'")},
-					{ID: 3, Name: "a", ResponseCode: ptr(500)},
+					{ID: 3, Name: "a", ResponseCode: ptr(500), ResponseBody: ptr(liquid.Marker + "{{ 1 }}")},
 				}},
 			{Service: store.Service{ID: 2, Path: "orders", Name: "Orders", UpstreamURL: "http://orders.internal"}},
 		},
@@ -50,6 +51,9 @@ func TestBuild(t *testing.T) {
 	}
 	if c := users.Scenarios[0].Condition; c == nil || users.Scenarios[1].Condition != nil {
 		t.Errorf("conditions not parsed: %+v", users.Scenarios)
+	}
+	if users.Scenarios[0].Template != nil || users.Scenarios[1].Template == nil || users.Scenarios[1].TemplateErr != nil {
+		t.Errorf("templates not parsed: %+v", users.Scenarios)
 	}
 	orders, _ := snap.Service("orders")
 	if orders.UpstreamURL != "http://localhost:9000/o" || orders.Upstream.Path != "/o" {
@@ -79,6 +83,7 @@ func TestBuildLeavesOutBrokenRows(t *testing.T) {
 	data := sampleData()
 	data.Services[1].UpstreamURL = "not a url"
 	data.Services[0].Scenarios[0].RequestCondition = ptr("$request.a = 1")
+	data.Services[0].Scenarios[1].ResponseBody = ptr(liquid.Marker + "{% if %}")
 	data.Clients[1].Condition = []byte(`{"bogus":1}`)
 	data.Clients = append(data.Clients,
 		store.CatalogClient{ID: 10, Name: "empty", Condition: []byte(`{"and":[]}`)},
@@ -89,14 +94,19 @@ func TestBuildLeavesOutBrokenRows(t *testing.T) {
 	if _, ok := snap.Service("orders"); ok {
 		t.Error("service with a bad URL kept")
 	}
-	if users, _ := snap.Service("users"); len(users.Scenarios) != 1 || users.Scenarios[0].ID != 3 {
-		t.Errorf("scenario with a bad condition kept: %+v", users.Scenarios)
+	users, _ := snap.Service("users")
+	if len(users.Scenarios) != 1 || users.Scenarios[0].ID != 3 {
+		t.Fatalf("scenario with a bad condition kept: %+v", users.Scenarios)
+	}
+	// A broken template keeps its scenario; the proxy sends the body unrendered.
+	if sc := users.Scenarios[0]; sc.Template != nil || sc.TemplateErr == nil {
+		t.Errorf("broken template: %+v", sc)
 	}
 	if len(snap.Clients()) != 1 {
 		t.Errorf("clients = %+v", snap.Clients())
 	}
-	if n := len(logs.All()); n != 6 {
-		t.Errorf("%d warnings, want 6", n)
+	if n := len(logs.All()); n != 7 {
+		t.Errorf("%d warnings, want 7", n)
 	}
 }
 

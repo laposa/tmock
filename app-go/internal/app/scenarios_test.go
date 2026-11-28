@@ -53,6 +53,10 @@ func TestScenarioValidation(t *testing.T) {
 		{"condition after spaces", base(func(in *app.ScenarioInput) { in.RequestCondition = ptr("   req.x == 1") }), "requestCondition", `column 4: unknown name "req": values come from $request, strings need quotes`},
 		{"condition after a line", base(func(in *app.ScenarioInput) { in.RequestCondition = ptr("\n  true &&") }), "requestCondition", `line 2, column 10: expected a value but found end of condition`},
 		{"condition unbalanced", base(func(in *app.ScenarioInput) { in.RequestCondition = ptr("($request.method == 'GET'") }), "requestCondition", `column 26: expected ")" but found end of condition`},
+		{"template syntax", base(func(in *app.ScenarioInput) {
+			in.ResponseBody = ptr("<% TEMPLATE: LiquidJS %>{\n  \"a\": {% if x %}1\n}")
+		}), "responseBody", "line 2, column 8: {% if %} is not closed: expected {% endif %}"},
+		{"template position", base(func(in *app.ScenarioInput) { in.ResponseBody = ptr("<% TEMPLATE: LiquidJS %>{\n  \"a\": {{ 1 | }}\n}") }), "responseBody", `line 2, column 15: expected a filter name after "|", but found nothing`},
 		{"code too low", base(func(in *app.ScenarioInput) { in.ResponseCode = ptr(99) }), "responseCode", "must be between 100 and 599"},
 		{"code too high", base(func(in *app.ScenarioInput) { in.ResponseCode = ptr(600) }), "responseCode", "must be between 100 and 599"},
 		{"code 0", base(func(in *app.ScenarioInput) { in.ResponseCode = ptr(0) }), "responseCode", "must be between 100 and 599"},

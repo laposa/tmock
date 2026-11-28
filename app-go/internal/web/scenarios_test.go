@@ -223,6 +223,16 @@ func TestScenarioFormErrors(t *testing.T) {
 		t.Errorf("validation: %d", rec.Code)
 	}
 
+	// A template's syntax error is shown under the body editor (spec §8.1).
+	bad = url.Values{"name": {"tpl"}, "service": {"svc"},
+		"responseBodyEnabled": {"on"}, "responseBody": {"<% TEMPLATE: LiquidJS %>{\r\n  {% if x %}\r\n}"}}
+	rec = send(h, "POST", "/ui/scenarios", bad, c, true)
+	wantContains(t, "template", rec.Body.String(),
+		`id="scenario-responseBody-message">line 2, column 3: {% if %} is not closed: expected {% endif %}</p>`)
+	if rec.Code != 422 {
+		t.Errorf("template: %d", rec.Code)
+	}
+
 	// A duplicate name is shown next to the name; an unknown service next to the service.
 	if rec := send(h, "POST", "/ui/scenarios", url.Values{"name": {"s"}, "service": {"svc"}}, c, true); rec.Code != 200 {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())

@@ -2,13 +2,18 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/laposa/tmock/app-go/internal/catalog"
+	"github.com/laposa/tmock/app-go/internal/liquid"
+	"github.com/laposa/tmock/app-go/internal/logx"
 )
 
 // mockedParts lists what scenario s changes in a response, for the log (spec §7.9):
@@ -27,9 +32,30 @@ func mockedParts(s *catalog.Scenario) []string {
 	return out
 }
 
-// responseBody is the body a scenario writes. Templates are rendered from I12; until then
-// the body is used verbatim, marker included.
-func responseBody(s *catalog.Scenario) []byte {
+// responseBody is the body scenario s writes, nil when it has none. A template is
+// rendered on every request (spec §8.1), so 'now' is always current. When the template
+// fails, at parse time (stored before templates were checked) or now, the failure is
+// logged as tmock.template.render_failed and the body is sent as stored, unrendered.
+func (p *Proxy) responseBody(ctx context.Context, s *catalog.Scenario) []byte {
+	if s.ResponseBody == nil {
+		return nil
+	}
+	err := s.TemplateErr
+	if err == nil && s.Template != nil {
+		out, rerr := s.Template.Render(liquid.Options{})
+		if rerr == nil {
+			return []byte(out)
+		}
+		err = rerr
+	}
+	if err != nil {
+		p.logger.LogAttrs(ctx, slog.LevelWarn,
+			fmt.Sprintf("template of scenario %q failed, body sent unrendered: %v", headerSafe(s.Name), err),
+			slog.String(logx.AttrEventName, logx.EventTemplateFailed),
+			slog.String(logx.AttrScenario, s.Name),
+			slog.String(logx.AttrExceptionMessage, err.Error()),
+		)
+	}
 	return []byte(*s.ResponseBody)
 }
 
@@ -41,22 +67,26 @@ func skipsProxy(s *catalog.Scenario) bool {
 
 // writeMock answers the request from the scenario alone (spec §7.6): its status (200 when
 // unset), its headers (a null value is ignored), the content-type fallback, the
-// x-tmock-* headers and the body.
-func writeMock(w http.ResponseWriter, sel selection) {
+// x-tmock-* headers and the body. body renders it (responseBody); it is called only when
+// the status allows a body, so a 204 never renders its template.
+func writeMock(w http.ResponseWriter, sel selection, body func() []byte) {
 	s := sel.scenario
-	body := responseBody(s)
+	status := http.StatusOK
+	if s.ResponseCode != nil {
+		status = *s.ResponseCode
+	}
+	var b []byte
+	if bodyAllowed(status) {
+		b = body()
+	}
 	h := w.Header()
 	for name, v := range s.ResponseHeaders {
 		if v != nil {
 			h.Set(name, *v)
 		}
 	}
-	setContentTypeFallback(h, body)
+	setContentTypeFallback(h, b)
 	setTmockHeaders(h, StatusMocked, sel)
-	status := http.StatusOK
-	if s.ResponseCode != nil {
-		status = *s.ResponseCode
-	}
 	if !bodyAllowed(status) {
 		// A scenario's own Content-Length or Transfer-Encoding must not survive either.
 		h.Del("Content-Length")
@@ -64,9 +94,9 @@ func writeMock(w http.ResponseWriter, sel selection) {
 		w.WriteHeader(status)
 		return
 	}
-	h.Set("Content-Length", strconv.Itoa(len(body)))
+	h.Set("Content-Length", strconv.Itoa(len(b)))
 	w.WriteHeader(status)
-	_, _ = w.Write(body)
+	_, _ = w.Write(b)
 }
 
 // bodyAllowed reports whether a response with status may have a body (RFC 9110: not
@@ -90,7 +120,10 @@ func bodyAllowed(status int) bool {
 //
 // An upgrade (101 Switching Protocols) gets only the headers: its body is the upgraded
 // connection, and a new status would break the upgrade.
-func modifyUpstream(resp *http.Response, sel selection) {
+//
+// body renders the scenario's body (responseBody); it is called only when the scenario
+// has one and the status allows it, so an upgrade or a 204 never renders its template.
+func modifyUpstream(resp *http.Response, sel selection, body func() []byte) {
 	s := sel.scenario
 	h := resp.Header
 	if resp.StatusCode == http.StatusSwitchingProtocols {
@@ -109,12 +142,15 @@ func modifyUpstream(resp *http.Response, sel selection) {
 		resp.Status = strconv.Itoa(resp.StatusCode) + " " + http.StatusText(resp.StatusCode)
 	}
 	if s.ResponseBody != nil {
-		body := responseBody(s)
+		var b []byte
+		if bodyAllowed(resp.StatusCode) {
+			b = body()
+		}
 		_ = resp.Body.Close()
-		replaceBody(resp, body)
+		replaceBody(resp, b)
 		h.Del("Etag")
 		h.Del("Content-Encoding")
-		setContentTypeFallback(h, body)
+		setContentTypeFallback(h, b)
 	}
 	if !bodyAllowed(resp.StatusCode) {
 		_ = resp.Body.Close()
