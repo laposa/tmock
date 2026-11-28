@@ -605,10 +605,11 @@ func jsonFilter(r *renderer, in filterInput) (value, error) {
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	if n := toInt(in.arg(0, int64(0))); n > 0 {
-		if n > 10 { // explicit constant bound (CodeQL does not recognise min())
-			n = 10
+		indent := 10 // cap; the conversion below sits inside a constant guard so CodeQL sees the bound
+		if n < 10 {
+			indent = int(n)
 		}
-		enc.SetIndent("", strings.Repeat(" ", int(n)))
+		enc.SetIndent("", strings.Repeat(" ", indent))
 	}
 	if err := enc.Encode(jsonable(v)); err != nil {
 		return nil, r.errAt(in.pos, "json: "+err.Error())
