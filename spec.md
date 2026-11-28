@@ -474,7 +474,7 @@ configuration can be reused with few edits.
 | `SERVICES_API_KEY` | — | If set, the `Apikey` header is added to every upstream request |
 | `SERVICES_UPSTREAM_OVERRIDES` | — | `path::url,path::url` overrides of upstream URLs |
 | `PROXY_REMOVE_FORWARDED_HEADERS` | `false` | `true` → strip `x-forwarded-host`, `-port`, `-proto`, `-scheme`, `x-scheme`, `x-forwarded-server` from upstream requests |
-| `PROXY_UPSTREAM_TIMEOUT` | `30s` | Timeout for upstream requests (Go duration) |
+| `PROXY_UPSTREAM_TIMEOUT` | `30s` | Timeout for upstream requests (Go duration): connecting, the TLS handshake and waiting for the response headers, each; not the body (§7.7) |
 | `PROXY_CORS_ALLOWED_ORIGINS` | *(empty = reflect any origin)* | Comma-separated allow-list for proxy CORS (§9.5) |
 | `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error` |
 | `LOG_FORMAT` | `text` | `text` \| `json` (console output; OTLP export is independent of it) |
@@ -748,6 +748,11 @@ Found in I06:
 - Header names must be HTTP tokens and must not differ only in case (`X-A` and `x-a` are the
   same header); values must not contain line breaks. All header problems are reported under
   `details.responseHeaders`.
+- Found in I13: a scenario may not set or delete (`null`) the headers that tmock frames the
+  response with, `Content-Length`, `Transfer-Encoding` and `Trailer`, nor the hop-by-hop
+  headers `Connection`, `Keep-Alive`, `Proxy-Connection`, `TE` and `Upgrade`, in any case:
+  `"Content-Length" is set by tmock and cannot be part of a scenario`. The catalog drops
+  them, with a warning, from scenarios stored before I13 (§7.8).
 - The unknown-service `404` comes after validation. A `PATCH` with `service` moves the scenario
   to that service. `?service=` with an unknown path returns `[]`.
 - The `409` message is `A scenario named "x" already exists in service "svc"`; the scenario's
@@ -1064,11 +1069,31 @@ response. The content-type fallback looks at the rendered body. A status without
     the upstream sees the client's encoding preferences and compressed bodies pass as they are.
   - `PROXY_UPSTREAM_TIMEOUT` (default `30s`) already applies, to connecting and to waiting for
     the response headers, not to the whole response, so long streamed bodies are not cut off
-    (I13 revisits the limits).
+    (limits revisited in I13, below).
   - `x-tmock-*` headers that the client or the upstream sent are dropped, so
     `x-tmock-client` and `x-tmock-scenario` only ever come from tmock. A client that goes away is not an upstream failure: no
     `tmock.proxy.upstream_failed` is logged. `error.type` is `connection_refused`, `dns`,
-    `timeout`, `connection_reset`, or the Go error type.
+    `timeout`, `connection_reset`, `response_headers_too_large` (I13), or the Go error type.
+- Found in I13 (timeouts and limits):
+  - `PROXY_UPSTREAM_TIMEOUT` also bounds the TLS handshake, so an upstream that accepts the
+    connection and then says nothing is a `502` (`timeout`) after the timeout, not a hung
+    request. It still does not bound the body: a stream may idle (server-sent events, long
+    polling), and the client going away ends it.
+  - Request headers are limited to 1 MB (`http.Server.MaxHeaderBytes`, `httpx.MaxHeaderBytes`):
+    the server answers `431` before any handler runs, so such a request is not logged as a
+    proxy request. Upstream response headers are limited to 1 MB as well
+    (`Transport.MaxResponseHeaderBytes`): `502`, `error.type=response_headers_too_large`.
+  - Bodies: a request body is limited (10 MB, `413`) only when a request condition reads it.
+    Otherwise request and response bodies are streamed in both directions without a limit,
+    as a transparent proxy should be. A body tmock writes is bounded by what can be saved
+    (10 MB, §6) and by the template limits (16 MB of output, §8.2).
+  - No server `ReadTimeout`: a slow upload streams to the upstream like any other body.
+    `ReadHeaderTimeout` (10 s) still bounds the headers.
+  - Benchmark (`internal/proxy/bench_test.go`, the no-scenario path with an in-memory
+    upstream): `ReverseProxy` allocated a 32 KB copy buffer for every response, nearly 90% of
+    what a request allocated. With a `BufferPool` the passthrough path is about 5 µs, 4.2 KB
+    and 55 allocations (37 KB before). The rest is the request clone in `ReverseProxy`,
+    routing and the log line; none of it stands out.
 
 ### 7.8 Upstream response modification
 
@@ -1091,11 +1116,12 @@ response. The content-type fallback looks at the rendered body. A status without
   Client and scenario names may contain any text, so control characters (line breaks) become
   spaces in `x-tmock-client` and `x-tmock-scenario`, as a header value cannot hold them, and
   in the log line, where they could forge another line.
-- Found in I11 (review), not fixed yet: a scenario's `responseHeaders` may set
-  `Content-Length` or `Transfer-Encoding`. With a replaced body (step 3) they are dropped,
-  but when the upstream body passes through, a wrong `Content-Length` truncates or aborts
-  the response. Saving such a scenario should be rejected along with the other header
-  checks (§6.4); proposed for I13.
+- Found in I11 (review), fixed in I13: a scenario's `responseHeaders` could set
+  `Content-Length` or `Transfer-Encoding`. With a replaced body (step 3) they were dropped,
+  but when the upstream body passed through, a wrong `Content-Length` truncated or aborted
+  the response. Saving such a scenario is now rejected, together with `Trailer` and the
+  hop-by-hop headers (§6.4), and the catalog drops them from scenarios stored earlier, so
+  step 1 never applies them.
 - Found in I10 (review): a `responseCode` of `204` or `304` drops whichever body there is,
   the upstream's or the scenario's (writing one would abort the response). A replaced body
   drops the upstream's framing too: `Transfer-Encoding` and announced trailers. An upgrade
@@ -1649,6 +1675,7 @@ a compatibility commitment.
 | Scenario order | Undefined | By name; the first matching scenario in the list wins (§7.5) |
 | Path matching | Compared the whole rest of the URL, query string included: a scenario with path `orders` did not match `/api/proxy/users/orders?page=2` or `…/orders/` | Compares only the path, without the query string and without leading or trailing `/`; case-insensitive in both (§7.5) |
 | Headers | `x-tmock-*` missing on skip-proxy responses | Always present |
+| Scenario headers | Any header, including `Content-Length` | `Content-Length`, `Transfer-Encoding`, `Trailer` and hop-by-hop headers are rejected: tmock frames the response (§6.4) |
 | `PROXY_REMOVE_FORWARDED_HEADERS` | Any value, even `false`, enabled it | Parsed as a boolean |
 | Conditions | IPv4-only CIDR; JS regex syntax | IPv4 and IPv6; RE2 regex syntax |
 | Config | `NODE_ENV` | `TMOCK_ENV` |
@@ -2172,7 +2199,7 @@ Update this table as issues are created and closed.
 | I10 | Matching and mocking | | In review | `condition.Compile`/`Matcher` (compiled once per catalog build; mapped prefixes unmapped); empty or broken enabled conditions left out of the catalog; scenarios with a request condition skipped until I11; content-type fallback only for bodies tmock writes; `x-tmock-*` always tmock's own, names made header-safe; 204/304 mocks without a body; proxy CORS wraps every proxy response; `[client …; scenario …; mocked: …]` in the log, `tmock.mocked` and `tmock.proxy_skipped` |
 | I11 | Request-condition expressions | | In review | `internal/expr` (lexer, recursive-descent parser with positions, evaluator; depth limit 64; fuzzed); numbers exact to 512 bits; `$request.path` is the full path; body JSON also without a content type; parsed once per catalog build, a broken stored condition leaves its scenario out; the condition is evaluated last and the body read lazily, buffered bodies forwarded with `Content-Length`; save errors are `column N: …` (in the text as written) next to the field; framing headers in scenarios noted for I13 |
 | I12 | Liquid template subset | | In review | `internal/liquid` (tokenizer with whitespace control, raw and nested comments; parser with line and column; renderer bounded by steps, bytes and depth; fuzzed); positions in the body as stored, marker included; a failed render sends the body as stored and logs `tmock.template.render_failed`; templates parsed once per catalog build, a stored broken one keeps its scenario and takes the fallback; rendered when the response is written; `time/tzdata` in `internal/liquid`, tested with `TZ=Europe/Dublin` in a child process; `YYYY-MM-DD` is local midnight |
-| I13 | Proxy hardening (M2) | | Planned | |
+| I13 | Proxy hardening (M2) | | In review | end-to-end proxy tests over real HTTP (clients, conditions, expressions, templates), replayed concurrently under `-race`; `ReverseProxy.BufferPool` (37 KB → 4.2 KB per passthrough request); `PROXY_UPSTREAM_TIMEOUT` also on the TLS handshake; 1 MB header limits both ways (`431`; `502` with `response_headers_too_large`); framing and hop-by-hop headers rejected in scenarios and dropped from stored ones (`httpx.ReservedResponseHeader`); `dev/m2-check.sh` for the §12 rows |
 | I14 | OpenAPI and swagger | | Planned | |
 | I15 | Legacy import | | Planned | |
 | I16 | Hardening and polish | | Planned | |

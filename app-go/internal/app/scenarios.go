@@ -303,8 +303,9 @@ func conditionError(raw, trimmed string, err error) error {
 	return expr.ErrorAt(raw, lead+e.Offset, e.Msg)
 }
 
-// headersProblem checks response headers: every name must be a valid HTTP header name,
-// no two names may differ only in case (HTTP header names are case-insensitive, so the
+// headersProblem checks response headers: every name must be a valid HTTP header name
+// and not one that tmock sets itself (Content-Length, Transfer-Encoding and the
+// hop-by-hop headers, httpx.ReservedResponseHeader), no two names may differ only in case (HTTP header names are case-insensitive, so the
 // proxy could not tell them apart), and no value may contain a line break. It returns
 // the first problem, in name order, or "".
 func headersProblem(h map[string]*string) string {
@@ -320,6 +321,8 @@ func headersProblem(h map[string]*string) string {
 			return "every header needs a name"
 		case !isHeaderName(n):
 			return fmt.Sprintf("%q is not a valid header name", n)
+		case httpx.ReservedResponseHeader(n):
+			return fmt.Sprintf("%q is set by tmock and cannot be part of a scenario", n)
 		}
 		canon := http.CanonicalHeaderKey(n)
 		if prev, ok := seen[canon]; ok {

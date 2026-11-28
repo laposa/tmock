@@ -25,6 +25,7 @@ import (
 	"github.com/laposa/tmock/app-go/internal/auth"
 	"github.com/laposa/tmock/app-go/internal/catalog"
 	"github.com/laposa/tmock/app-go/internal/config"
+	"github.com/laposa/tmock/app-go/internal/httpx"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/password"
 	"github.com/laposa/tmock/app-go/internal/proxy"
@@ -195,6 +196,7 @@ func serve(ctx context.Context, logger *slog.Logger, ln net.Listener, h http.Han
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    httpx.MaxHeaderBytes, // larger headers get 431
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 		// No WriteTimeout: proxied responses may stream for a long time.
 	}

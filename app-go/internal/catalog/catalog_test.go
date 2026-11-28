@@ -110,6 +110,31 @@ func TestBuildLeavesOutBrokenRows(t *testing.T) {
 	}
 }
 
+// Spec §6.4 (I13): a scenario stored before the check (or imported) keeps its other
+// headers; the framing and hop-by-hop ones are dropped with a warning, and the store's
+// map is left as it was.
+func TestBuildDropsReservedHeaders(t *testing.T) {
+	data := sampleData()
+	stored := map[string]*string{"content-length": ptr("5"), "X-Keep": ptr("1"), "Connection": nil}
+	data.Services[0].Scenarios[0].ResponseHeaders = stored
+	data.Services[0].Scenarios[1].ResponseHeaders = map[string]*string{"Transfer-Encoding": ptr("chunked")}
+	logs, logger := logxtest.New()
+	snap := Build(data, nil, logger)
+	users, _ := snap.Service("users")
+	if h := users.Scenarios[0].ResponseHeaders; len(h) != 1 || *h["X-Keep"] != "1" {
+		t.Errorf("headers = %v", h)
+	}
+	if h := users.Scenarios[1].ResponseHeaders; h != nil {
+		t.Errorf("only reserved headers: %v, want nil", h)
+	}
+	if len(stored) != 3 {
+		t.Errorf("the store's map was changed: %v", stored)
+	}
+	if n := len(logs.All()); n != 3 {
+		t.Errorf("%d warnings, want 3", n)
+	}
+}
+
 // fakeLoader counts loads and can block or fail them.
 type fakeLoader struct {
 	mu    sync.Mutex

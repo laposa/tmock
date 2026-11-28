@@ -18,6 +18,7 @@ import (
 
 	"github.com/laposa/tmock/app-go/internal/config"
 	"github.com/laposa/tmock/app-go/internal/db/dbtest"
+	"github.com/laposa/tmock/app-go/internal/httpx"
 	"github.com/laposa/tmock/app-go/internal/logx"
 	"github.com/laposa/tmock/app-go/internal/password"
 	"github.com/laposa/tmock/app-go/internal/store"
@@ -206,6 +207,33 @@ func TestServeDrainsOpenRequests(t *testing.T) {
 	}
 	if e := findEvent(events, logx.EventServerStopped); e == nil || e[logx.AttrShutdownForced] != false {
 		t.Errorf("stopped event %v", e)
+	}
+}
+
+// Spec §7.7 (I13): request headers larger than httpx.MaxHeaderBytes get 431 from the
+// server, before any handler (the proxy included) runs.
+func TestServeLimitsRequestHeaders(t *testing.T) {
+	called := false
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true })
+	ctx, cancel := context.WithCancel(context.Background())
+	url, _, res := startServe(t, ctx, h, time.Second)
+	defer func() { cancel(); <-res.done }()
+
+	send := func(size int) int {
+		req, _ := http.NewRequest("GET", url+"/api/proxy/svc/", nil)
+		req.Header.Set("X-Big", strings.Repeat("a", size))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := send(httpx.MaxHeaderBytes + 4096); code != http.StatusRequestHeaderFieldsTooLarge || called {
+		t.Errorf("oversized headers: %d (handler called: %v)", code, called)
+	}
+	if code := send(64 << 10); code != http.StatusOK || !called {
+		t.Errorf("64 KB of headers: %d (handler called: %v)", code, called)
 	}
 }
 

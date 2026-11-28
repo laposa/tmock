@@ -14,10 +14,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/url"
 
 	"github.com/laposa/tmock/app-go/internal/condition"
 	"github.com/laposa/tmock/app-go/internal/expr"
+	"github.com/laposa/tmock/app-go/internal/httpx"
 	"github.com/laposa/tmock/app-go/internal/liquid"
 	"github.com/laposa/tmock/app-go/internal/store"
 )
@@ -127,7 +129,7 @@ func Build(data store.CatalogData, overrides map[string]string, logger *slog.Log
 			svc.Scenarios = append(svc.Scenarios, Scenario{
 				ID: sc.ID, Name: sc.Name,
 				RequestMethod: sc.RequestMethod, RequestPath: sc.RequestPath, RequestCondition: sc.RequestCondition, Condition: cond,
-				ResponseCode: sc.ResponseCode, ResponseHeaders: sc.ResponseHeaders, ResponseBody: sc.ResponseBody,
+				ResponseCode: sc.ResponseCode, ResponseHeaders: responseHeaders(sc, logger), ResponseBody: sc.ResponseBody,
 				Template: tpl, TemplateErr: tplErr,
 				SkipProxy: sc.SkipProxy,
 			})
@@ -155,6 +157,29 @@ func Build(data store.CatalogData, overrides map[string]string, logger *slog.Log
 		snap.clients = append(snap.clients, Client{ID: c.ID, Name: c.Name, Condition: cond, Match: match, Scenarios: ids})
 	}
 	return snap
+}
+
+// responseHeaders returns the scenario's response headers without the ones a scenario may
+// not set (httpx.ReservedResponseHeader), which a scenario stored before I13 (or
+// imported) can still have: a Content-Length over a passed-through body would truncate
+// the response. Each one dropped is reported to logger.
+func responseHeaders(sc store.Scenario, logger *slog.Logger) map[string]*string {
+	h := sc.ResponseHeaders
+	copied := false
+	for name := range sc.ResponseHeaders {
+		if !httpx.ReservedResponseHeader(name) {
+			continue
+		}
+		if !copied { // the store's map is not ours to change
+			h, copied = maps.Clone(h), true
+		}
+		delete(h, name)
+		logger.Warn(fmt.Sprintf("catalog: scenario %d: response header %q ignored, it is set by tmock", sc.ID, name))
+	}
+	if len(h) == 0 {
+		return nil
+	}
+	return h
 }
 
 // Loader reads the catalog data; *store.Catalog is one.

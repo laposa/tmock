@@ -65,6 +65,9 @@ func TestScenarioValidation(t *testing.T) {
 		{"same header twice", base(func(in *app.ScenarioInput) {
 			in.ResponseHeaders = map[string]*string{"x-a": ptr("1"), "X-A": ptr("2")}
 		}), "responseHeaders", `"X-A" and "x-a" are the same header`},
+		{"framing header", base(func(in *app.ScenarioInput) { in.ResponseHeaders = map[string]*string{"content-length": ptr("5")} }), "responseHeaders", `"content-length" is set by tmock and cannot be part of a scenario`},
+		{"framing header deleted", base(func(in *app.ScenarioInput) { in.ResponseHeaders = map[string]*string{"Transfer-Encoding": nil} }), "responseHeaders", `"Transfer-Encoding" is set by tmock and cannot be part of a scenario`},
+		{"hop-by-hop header", base(func(in *app.ScenarioInput) { in.ResponseHeaders = map[string]*string{"Connection": ptr("close")} }), "responseHeaders", `"Connection" is set by tmock and cannot be part of a scenario`},
 		{"line break in a value", base(func(in *app.ScenarioInput) { in.ResponseHeaders = map[string]*string{"X-A": ptr("a\r\nB: c")} }), "responseHeaders", `the value of "X-A" must not contain line breaks`},
 		{"skipProxy without body", base(func(in *app.ScenarioInput) { in.SkipProxy = true }), "skipProxy", "requires a response body"},
 		{"skipProxy with an empty body", base(func(in *app.ScenarioInput) { in.SkipProxy, in.ResponseBody = true, ptr("") }), "skipProxy", "requires a response body"},
